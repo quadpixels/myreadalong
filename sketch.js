@@ -1,17 +1,21 @@
 // 2021-10-09
 // audio stuff
 var audio;
-var loudness = 0;
+//var loudness = 0;
 var normalized = [];
 var amplitudeSpectrum;
 var g_buffer = [];
 var g_model;
 
+const STATUS_Y = 545;
+// Audio processor
+var g_my_processor;
+
 class LoudnessVis {
   constructor() {
     this.max_value = 16;
     this.x = 500;
-    this.y = 575;
+    this.y = STATUS_Y;
     this.w = 100;
     this.h = 13;
   }
@@ -51,18 +55,36 @@ class LoudnessVis {
 
 class FFTVis {
   constructor() {
-    this.nshown = 256;
-    this.x = 200;
-    this.y = 575;
+    this.nshown = 200;
+    this.x = 240;
+    this.y = STATUS_Y;
     this.w = 256;
     this.h = 13;
+
+    this.fft = [];
+    this.sliding_window = new SlidingWindow();
+    this.last_win_ms = 0;
+    this.fft_per_sec = 0;
   }
 
   myMap(x) {
-    return Math.log(x+1) * 14;
+    return Math.log(x+1) * 1;
   }
 
-  Render(fft) {
+  AddOneEntry(fft) {
+    this.fft = fft;
+    this.sliding_window.AddOneEvent(millis());
+  }
+
+  Render() {
+    const ms = millis();
+    if (ms >= this.last_win_ms + 1000) {
+      this.fft_per_sec = this.sliding_window.GetCountAndTotalWeightAfter(ms - 1000);
+      this.sliding_window.RemoveEventsBefore(ms - 1000);
+      this.last_win_ms += parseInt((ms - this.last_win_ms) / 1000) * 1000;
+    }
+
+    const fft = this.fft;
     const TEXT_SIZE = 16;
     fill(122);
     for (let i=0; i<this.nshown && i < fft.length; i++) {
@@ -72,8 +94,10 @@ class FFTVis {
       rect(x0, y0, x1-x0+1, this.h+this.y-y0);
     }
 
-    const nbreaks = 8;
-    const fftfreq = audio.meyda._m.sampleRate / 2;
+    const nbreaks = 9;
+    
+    // Resampled to 16KHz, so max nyquist frequency is 8Khz
+    const fftfreq = 8000;
     
     textAlign(CENTER, TOP);
     
@@ -89,13 +113,15 @@ class FFTVis {
 
       noStroke();
       fill(122);
-      text(freq+"", dx, this.y + this.h + 2);
+      text(freq+"", dx, this.y + TEXT_SIZE);
     }
 
-    const binwidth = parseFloat(fftfreq / fft.length);
+    const binwidth = parseFloat(fftfreq / (fft.length / 2));
     textAlign(LEFT, TOP);
-    text(binwidth + " hz * " + fft.length + " bins",
-      this.x, this.y + TEXT_SIZE + this.h);
+    text(binwidth + " hz * " + fft.length + " bins, showing " + this.nshown + " bins",
+      this.x, this.y + TEXT_SIZE*2);
+    fill(32);
+    text(this.fft_per_sec[0] + " ffts/s ", this.x, this.y + TEXT_SIZE * 3);
 
     noFill();
     stroke(32);
@@ -106,37 +132,46 @@ class FFTVis {
 class AudioStatsViz {
   constructor() {
     this.window_audiosample = new SlidingWindow();
-    this.value = 0;
+    this.samp_per_sec = 0;
+    this.cb_per_sec   = 0;
     this.x = 32;
-    this.y = 575;
+    this.y = STATUS_Y;
     this.last_ms = 0;
     this.w = 64;
     this.ub = 0; this.lb = 0;
   }
 
-  AddOneEvent() {
-    this.window_audiosample.AddOneEvent(millis());
+  AddOneEvent(buffer) {
+    const ms = millis();
+    this.window_audiosample.AddOneEvent(millis(), buffer.length);
   }
 
   Render() {
     const TEXT_SIZE = 16
     const ms = millis();
     if (ms > this.last_ms + 1000) {
-      this.last_ms = ms;
-      this.value = this.window_audiosample.GetCountAfter(ms - 1000);
+      const x = this.window_audiosample.GetCountAndTotalWeightAfter(ms - 1000);
+      this.samp_per_sec = x[1];
+      this.cb_per_sec   = x[0];
       this.window_audiosample.RemoveEventsBefore(ms - 1000);
+
+      this.last_ms += parseInt((ms - this.last_ms) / 1000) * 1000;
+      //this.last_ms += 1000;
     }
     push();
     noStroke();
     textAlign(LEFT, TOP);
-    fill(122);
-    text("tfjs " + tf.version.tfjs, this.x, this.y + TEXT_SIZE*3);
-    fill(32);
-    text(this.value + " audio cb/s", this.x, this.y + TEXT_SIZE*2);
-    text(this.lb.toFixed(2) + ".." + this.ub.toFixed(2), this.x, this.y + TEXT_SIZE);
+    
+    //fill(122);
+    //text("tfjs " + tf.version.tfjs, this.x, this.y + TEXT_SIZE*4);
 
+    fill(122);
+    text(this.lb.toFixed(2) + ".." + this.ub.toFixed(2), this.x, this.y + TEXT_SIZE);
+    fill(32);
+    text(this.samp_per_sec + " sp/s", this.x, this.y + TEXT_SIZE*2);
+    text(this.cb_per_sec + " cb/s", this.x, this.y + TEXT_SIZE*3);
     // draw buffer
-    const b = g_buffer.buffer;
+    const b = g_buffer;
 
     for (let i=0; i<b.length; i++) {
       this.ub = max(this.ub, b[i]);
@@ -173,9 +208,8 @@ class RecorderViz {
     this.x = 32;
     this.y = 48;
     this.window_delta = 10; // ms
-    this.start_rec_millis = 0;
-    this.next_expect_millis = 0;
     this.graph.clear();
+    this.start_record_ms = 0;
     this.duration_ms = 0;
     this.px_per_samp = 1;  // 1 sample = 1 px
   }
@@ -189,9 +223,8 @@ class RecorderViz {
 
   StartRecording() {
     this.is_recording = true;
-    this.start_rec_millis = millis();
-    this.next_expect_millis = this.start_rec_millis;
     this.buffer = [];
+    this.start_record_ms = millis();
   }
 
   myMap(x) {
@@ -200,6 +233,7 @@ class RecorderViz {
 
   StopRecording() {
     this.is_recording = false;
+    this.duration_ms = millis() - this.start_record_ms;
     
     // Render fft
     const g = this.graph;
@@ -218,14 +252,9 @@ class RecorderViz {
     }
   }
 
-  AddSpectrumIfRecording(fft, ms) {
+  AddSpectrumIfRecording(fft) {
     if (!this.is_recording) return;
-    while (ms > this.next_expect_millis) {
-      this.buffer.push(fft);
-      const n = parseInt((ms - this.next_expect_millis) / this.window_delta) + 1;
-      this.next_expect_millis += this.window_delta;
-      this.duration_ms = ms - this.start_rec_millis;
-    }
+    this.buffer.push(fft);
   }
 
   Render() {
@@ -272,19 +301,37 @@ class PathfinderViz {
 
     this.py2idx = {};
     this.graph = createGraphics(512, 400);
+
+    this.result = "x";
+    this.predict_time = 0;
+    this.decode_time = 0;
+  }
+
+  SetResult(res, pred_time, dec_time) {
+    this.result = res;
+    this.predict_time = pred_time;
+    this.decode_time = dec_time;
   }
 
   Render() {
+    const TEXT_SIZE = 15;
     push();
     noStroke();
     fill(32);
     textAlign(LEFT, TOP);
-    text("Pathfinding Viz", this.x, this.y);
-    noStroke();
-    image(this.graph, this.x, this.y + 15);
-    noFill();
-    stroke(128);
-    rect(this.x, this.y + 15, this.graph.width, this.graph.height);
+
+    //text("Result panel", this.x, this.y);
+    fill(128);
+    text("tfjs " + tf.version.tfjs, this.x, this.y);
+    //image(this.graph, this.x, this.y + TEXT_SIZE);
+    
+    fill(32);
+    if (this.result != "") {
+      text("Result: " + this.result, this.x, this.y + TEXT_SIZE);
+      text("Predict time: " + this.predict_time + " ms", this.x, this.y + TEXT_SIZE*2);
+      text("Decode time: " + this.decode_time + " ms", this.x, this.y + TEXT_SIZE*3);
+    }
+
     pop();
   }
 
@@ -307,20 +354,39 @@ class PathfinderViz {
     const g = this.graph;
     g.clear();
     g.noFill();
-    for (let i=0; i<len && i < g.width; i++) {
-      const line = o.slice([0,i,0], [1,1,vocab_size]).dataSync();
-      for (let j=0; j<g.height; j++) {
-        let lb = parseInt(map(j, 0, g.height-1, 0, vocab_size-1));
-        let ub = parseInt(map(j+1,0,g.height-1, 0, vocab_size-1));
-        if (ub < lb) ub = lb;
 
-        let s = 0;
-        for (let k=lb; k<=ub; k++) {
-          s += line[k];
+    if (true) {
+      let pylist = [];
+      for (let i=0; i<len && i < g.width; i++) {
+        const line = o.slice([0,i,0], [1,1,vocab_size]).dataSync();
+        for (let j=0; j<g.height; j++) {
+          let lb = parseInt(map(j, 0, g.height-1, 0, vocab_size-1));
+          let ub = parseInt(map(j+1,0,g.height-1, 0, vocab_size-1));
+          if (ub < lb) ub = lb;
+
+          let s = 0;
+          for (let k=lb; k<=ub; k++) {
+            s += line[k];
+          }
+
+          g.stroke(this.MapColor(s));
+          g.point(i, j);
         }
 
-        g.stroke(this.MapColor(s));
-        g.point(i, j);
+        // Get argmax
+        let maxprob = -1e20, maxidx = -999;
+        for (let j=0; j<line.length; j++) {
+          if (line[j] > maxprob) {
+            maxprob = line[j];
+            maxidx = j;
+          }
+        }
+        if (maxidx != -999) {
+          pylist.push(PINYIN_LIST[maxidx]);
+        } else {
+          pylist.push(" ");
+        }
+        console.log(pylist)
       }
     }
   }
@@ -332,23 +398,24 @@ var g_recording = false;
 //var graph_rec_mfcc;
 var graph_mfcc0, graph_diff;
 
-var soundReady = false;
-var classifying = false;
+var soundReady = true;
 
 var normalized = [];
 var currentPrediction = "";
 var rotation = 0.0;
 
 let g_frame_count = 0;
-let g_audiostats_viz = new AudioStatsViz();
+let g_input_audio_stats_viz = new AudioStatsViz();
+let g_downsp_audio_stats_viz = new AudioStatsViz();
 
-let temp0;
+let temp0, temp1;
+let temp0array;
+let g_textarea;
 
 function setup() {
   createCanvas(640, 640);
   frameRate(60);
-  //graph_rec_mfcc = createGraphics(512, 16);
-  //graph_mfcc0 = createGraphics(512, 16);
+
   graph_diff = createGraphics(512, 512);
   audio = new MicrophoneInput(512);
   g_loudness_vis = new LoudnessVis();
@@ -364,9 +431,36 @@ function setup() {
   b1.position(106, 16);
   b1.mousePressed(async() => {
     console.log(g_recorderviz.buffer)
+    const ms0 = millis();
     temp0 = await DoPrediction(g_recorderviz.buffer);
-    g_pathfinder_viz.RenderPredictionOutput(temp0);
-  })
+    const ms1 = millis();
+    //g_pathfinder_viz.RenderPredictionOutput(temp0);
+    temp0array = []; // for ctc
+    const T = temp0.shape[1];
+    const S = temp0.shape[2];
+    for (let t=0; t<T; t++) {
+      let line = [];
+      let src = temp0.slice([0, t, 0], [1, 1, S]).dataSync();
+      for (let s=0; s<S; s++) {
+        line.push(src[s]);
+      }
+      temp0array.push(line);
+    }
+    let blah = Decode(temp0array, 20, S-1);
+    let out = ""
+    blah[0].forEach((x) => {
+      out = out + PINYIN_LIST[x] + " "
+    });
+    const ms2 = millis();
+    g_pathfinder_viz.SetResult(out, ms1-ms0, ms2-ms1);
+    console.log(out);
+  });
+
+  g_textarea = createElement("textarea", "");
+  g_textarea.size(320, 50);
+  g_textarea.position(32, height + 50)
+
+  g_downsp_audio_stats_viz.x = 130;
 }
 
 function DrawMFCC(mfcc, g) {
@@ -440,8 +534,8 @@ function draw() {
     fill(0);
     noStroke();
 
-    g_loudness_vis.Render(loudness.total);
-    g_fft_vis.Render(amplitudeSpectrum);
+    //g_loudness_vis.Render(loudness.total);
+    g_fft_vis.Render();
     textAlign(LEFT, TOP);
     
     if (g_recording) {
@@ -450,40 +544,65 @@ function draw() {
       text("REC " + g_rec_mfcc.length, 16, 16);
     }
     
-    g_audiostats_viz.Render();
+    g_input_audio_stats_viz.Render();
+    g_downsp_audio_stats_viz.Render();
     g_recorderviz.Render();
     g_pathfinder_viz.Render();
   }
-  
+
   pop();
-  
-  
+
   g_frame_count ++;
 }
 
+function SoundDataCallbackMyAnalyzer(buffer, downsampled, fft_frames) {
+  soundReady = true;
+  g_input_audio_stats_viz.AddOneEvent(buffer);
+  g_buffer = buffer;
+  g_downsp_audio_stats_viz.AddOneEvent(downsampled);
+}
 
 function soundDataCallback(soundData) {
   const ms = millis();
-  g_audiostats_viz.AddOneEvent();
+  if (g_input_audio_stats_viz == undefined) return;
+  if (g_recorderviz == undefined) return;
   soundReady = true;
   //mfcc = soundData.mfcc;
-  amplitudeSpectrum = soundData.amplitudeSpectrum;
-  loudness = soundData.loudness;
+  
   g_buffer = soundData;
   g_recorderviz.AddSpectrumIfRecording(amplitudeSpectrum, ms);
-
-  //for (var i = 0; i < 13; i++) {
-  //  normalized[i] = map(mfcc[i], -10, 30, 0, 1);
-  //}
-  
-  //g_rec_mfcc.push(mfcc.slice());
 }
 
 function keyPressed() {
   if (key == 'r') {
     g_recorderviz.StartRecording();
   } else if (key == 'p') { // Print recorded
-    console.log(JSON.stringify(g_rec_mfcc));
+    const x = g_recorderviz.buffer;
+    let txt = "";
+    x.forEach((line) => {
+      for (let i=0; i<line.length; i++) {
+        if (i>0) {
+          txt += ","
+        }
+        txt += ScaleFFTDataPoint(line[i])
+      }
+      txt += "\n"
+    })
+    g_textarea.value(txt);
+  } else if (key == 'o') {
+    let txt = "[";
+    temp0array.forEach((line) => {
+      txt += "[";
+      for (let i=0; i<line.length; i++) {
+        if (i > 0) 
+          txt += ",";
+
+        txt += line[i]
+      }
+      txt += "],\n";
+    });
+    txt += "]";
+    g_textarea.value(txt);
   }
 }
 
