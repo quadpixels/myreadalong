@@ -1,4 +1,5 @@
-//import baseComplexArray from './complex_array';
+// From:
+// https://github.com/dntj/jsfft
 
 // Math constants and functions we need.
 const PI = Math.PI;

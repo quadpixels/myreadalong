@@ -1,3 +1,6 @@
+// From: 
+// https://github.com/dntj/jsfft
+
 class baseComplexArray {
   constructor(other, arrayType = Float32Array) {
     if (other instanceof baseComplexArray) {
