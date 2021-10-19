@@ -1,13 +1,11 @@
 // 2021-10-09
 // audio stuff
-var audio;
-//var loudness = 0;
 var normalized = [];
 var amplitudeSpectrum;
 var g_buffer = [];
 var g_model;
 
-const STATUS_Y = 545;
+const STATUS_Y = 185;
 // Audio processor
 var g_my_processor;
 
@@ -68,7 +66,9 @@ class FFTVis {
   }
 
   myMap(x) {
-    return Math.log(x+1) * 1;
+    let ret = map(log(x), 1, 12, 0, 1);
+    ret = constrain(ret, 0, 1);
+    return ret;
   }
 
   AddOneEntry(fft) {
@@ -228,7 +228,9 @@ class RecorderViz {
   }
 
   myMap(x) {
-    return Math.log(x+1) * 14;
+    let ret = map(Math.log(x+1), 0, 20, 0, 1);
+    ret = constrain(ret, 0, 1);
+    return ret;
   }
 
   StopRecording() {
@@ -276,6 +278,7 @@ class RecorderViz {
       text("Not recording", this.x + dx, this.y);
     } else {
       fill("#F88");
+      this.duration_ms = millis() - this.start_record_ms;
       text("Recording", this.x + dx, this.y);
     }
 
@@ -411,24 +414,73 @@ let g_downsp_audio_stats_viz = new AudioStatsViz();
 let temp0, temp1;
 let temp0array;
 let g_textarea;
+let g_audio;
 
-function setup() {
+let g_audio_file_input;
+let g_audio_elt;
+
+async function setup() {
+  g_audio_file_input = document.getElementById("audio_input");
+  g_audio_file_input.addEventListener("input", async (x) => {
+    console.log("addEventListener");
+    console.log(x.target.files);
+    let the_file;
+    x.target.files.forEach((f) => {
+      the_file = f;
+    })
+    if (the_file) {
+      g_audio_elt = createElement("audio");  // p5.js-wrapped object
+      g_audio_elt.attribute("controls", "")
+      g_audio_elt.elt.src = URL.createObjectURL(the_file);
+      g_audio_elt.position(280, 16);
+
+      console.log(the_file);
+      
+      // create some audio context
+      let audio_context = new AudioContext();
+      let source = audio_context.createMediaElementSource(g_audio_elt.elt);
+      let m = await audio_context.audioWorklet.addModule('my-processor.js');
+      const myProcessor = await CreateMyProcessor(audio_context);
+      source.connect(myProcessor);
+    }
+  });
+
   createCanvas(640, 640);
   frameRate(60);
 
   graph_diff = createGraphics(512, 512);
-  audio = new MicrophoneInput(512);
   g_loudness_vis = new LoudnessVis();
   g_fft_vis = new FFTVis();
 
-  const b = createButton("Load model");
-  b.position(16, 16);
+  let b0, b2;
+
+  b0 = createButton("Mic");
+  b0.position(16, 16);
+  b0.mousePressed(() => {
+    g_audio = new MicrophoneInput(512);
+    b2.elt.disabled = true;
+    b0.elt.disabled = true;
+  });
+
+  b2 = createButton("File");
+  b2.position(56, 16);
+  b2.mousePressed(() => {
+    g_audio_file_input.click();
+    b2.elt.disabled = true;
+    b0.elt.disabled = true;
+  });
+
+  let b, b1;
+  b = createButton("Load model");
+  b.position(112, 16);
   b.mousePressed(async () => {
     g_model = await LoadModel();
+    b1.elt.disabled = false;
   })
 
-  const b1 = createButton("Predict");
-  b1.position(106, 16);
+  b1 = createButton("Predict");
+  b1.position(206, 16);
+  b1.elt.disabled = true;
   b1.mousePressed(async() => {
     console.log(g_recorderviz.buffer)
     const ms0 = millis();
@@ -446,7 +498,7 @@ function setup() {
       }
       temp0array.push(line);
     }
-    let blah = Decode(temp0array, 20, S-1);
+    let blah = Decode(temp0array, 10, S-1);
     let out = ""
     blah[0].forEach((x) => {
       out = out + PINYIN_LIST[x] + " "
@@ -458,7 +510,8 @@ function setup() {
 
   g_textarea = createElement("textarea", "");
   g_textarea.size(320, 50);
-  g_textarea.position(32, height + 50)
+  g_textarea.position(32, STATUS_Y + 100)
+  g_textarea.hide();
 
   g_downsp_audio_stats_viz.x = 130;
 }
@@ -577,6 +630,7 @@ function keyPressed() {
   if (key == 'r') {
     g_recorderviz.StartRecording();
   } else if (key == 'p') { // Print recorded
+    g_textarea.show();
     const x = g_recorderviz.buffer;
     let txt = "";
     x.forEach((line) => {

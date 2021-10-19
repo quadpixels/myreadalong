@@ -21,6 +21,39 @@ var MicrophoneInput = function MicrophoneInput(bufferSize) {
 	this.initializeMicrophoneSampling();
 };
 
+// Create my processor & bind events
+async function CreateMyProcessor(ctx) {
+  const myProcessor = new AudioWorkletNode(ctx, 'my-processor');
+  // port: https://stackoverflow.com/questions/62702721/how-to-get-microphone-volume-using-audioworklet
+  myProcessor.port.onmessage = ((event) => {
+    const ms = millis();
+    SoundDataCallbackMyAnalyzer(event.data.buffer, event.data.downsampled, event.data.fft_frames);
+    if (event.data.fft_frames) {
+      event.data.fft_frames.forEach((f) => {
+        const real = new Float32Array(400);
+        const imag = new Float32Array(400);
+        for (let i=0; i<400; i++) {
+          real[i] = f[i];
+        }
+        
+        // fft.js
+        transform(real, imag);
+
+        let spec = [];
+        for (let i=0; i<400; i++) {
+          const re = real[i], im = imag[i];
+          const mag = Math.sqrt(re*re + im*im);
+          spec.push(mag);
+        }
+        temp0 = f
+        g_fft_vis.AddOneEntry(spec);
+        g_recorderviz.AddSpectrumIfRecording(spec.slice(0, 200), ms);
+      });
+    }
+  });
+  return myProcessor;
+}
+
 MicrophoneInput.prototype.initializeMicrophoneSampling = function() {
   var errorCallback = function errorCallback(err) {
     console.log("errorCallback");
@@ -47,33 +80,9 @@ MicrophoneInput.prototype.initializeMicrophoneSampling = function() {
       var source = audioObject.context.createMediaStreamSource(window.mediaStream);
 
       let m = await audioObject.context.audioWorklet.addModule('my-processor.js');
-      const myProcessor = new AudioWorkletNode(audioObject.context, 'my-processor');
+      let processor = await CreateMyProcessor(audioObject.context);
 
-      // port: https://stackoverflow.com/questions/62702721/how-to-get-microphone-volume-using-audioworklet
-      myProcessor.port.onmessage = ((event) => {
-        const ms = millis();
-        SoundDataCallbackMyAnalyzer(event.data.buffer, event.data.downsampled, event.data.fft_frames);
-        if (event.data.fft_frames) {
-          event.data.fft_frames.forEach((f) => {
-            const data = new ComplexArray(400);
-            for (let i=0; i<400; i++) {
-              data.real[i] = f[i];
-            }
-            data.FFT();
-            let spec = [];
-            for (let i=0; i<400; i++) {
-              const re = data.real[i], im = data.imag[i];
-              const mag = Math.sqrt(re*re + im*im);
-              spec.push(mag);
-            }
-            temp0 = f
-            g_fft_vis.AddOneEntry(spec);
-            g_recorderviz.AddSpectrumIfRecording(spec.slice(0, 200), ms);
-          });
-        }
-      })
-
-      source.connect(myProcessor);
+      source.connect(processor);
     };
 
     try {
@@ -133,7 +142,7 @@ class SlidingWindow {
 }
 
 function ScaleFFTDataPoint(x) {
-  let ret = log(x * 32768);
+  let ret = log(x + 1);
   if (ret < 0) ret = 0;
   return ret;
 }

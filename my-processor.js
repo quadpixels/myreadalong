@@ -90,7 +90,13 @@ class MyProcessor extends AudioWorkletProcessor {
       while (this.RingBufferSize() > this.next_fft_sampsize) {
         const windowed = this.GetNEntries(this.next_fft_sampsize - w, w);
         for (let i=0; i<w; i++) {
-          windowed[i] *= this.hanning_window[i];
+          let s = windowed[i];
+          s *= this.hanning_window[i];
+          // Also convert to int16
+          if (s > 1) s = 1;
+          if (s < -1) s = -1;
+          s = parseInt(32767 * s);
+          windowed[i] = s;
         }
         fft_frames.push(windowed);
         this.next_fft_sampsize += this.fft_window_increment;
