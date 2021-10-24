@@ -4,8 +4,10 @@ var normalized = [];
 var amplitudeSpectrum;
 var g_buffer = [];
 var g_model;
+var g_worker;
+let g_tfjs_version = undefined;
 
-const STATUS_Y = 185;
+const STATUS_Y = 208;
 // Audio processor
 var g_my_processor;
 
@@ -54,7 +56,7 @@ class LoudnessVis {
 class FFTVis {
   constructor() {
     this.nshown = 200;
-    this.x = 240;
+    this.x = 210;
     this.y = STATUS_Y;
     this.w = 256;
     this.h = 13;
@@ -134,7 +136,7 @@ class AudioStatsViz {
     this.window_audiosample = new SlidingWindow();
     this.samp_per_sec = 0;
     this.cb_per_sec   = 0;
-    this.x = 32;
+    this.x = 16;
     this.y = STATUS_Y;
     this.last_ms = 0;
     this.w = 64;
@@ -205,13 +207,17 @@ class RecorderViz {
     this.Clear();
     this.graph = createGraphics(500, 32);
     this.is_recording = false;
-    this.x = 32;
-    this.y = 48;
+    this.x = 16;
+    this.y = 80;
     this.window_delta = 10; // ms
     this.graph.clear();
     this.start_record_ms = 0;
     this.duration_ms = 0;
     this.px_per_samp = 1;  // 1 sample = 1 px
+
+    this.window_offset = 0;
+    this.window_delta = 25;
+    this.window_width = 100;
   }
 
   Clear() {
@@ -225,6 +231,7 @@ class RecorderViz {
     this.is_recording = true;
     this.buffer = [];
     this.start_record_ms = millis();
+    this.window_offset = 0;
   }
 
   myMap(x) {
@@ -266,11 +273,16 @@ class RecorderViz {
     textAlign(LEFT, TOP);
 
     let dx = 0;
-    const txt = "" + this.buffer.length + " | " + 
+    let txt = "" + this.buffer.length + " | " + 
       (this.duration_ms / 1000).toFixed(1) + "s |";
-    dx = textWidth(txt) + 3;
 
     fill(122);
+
+    txt = txt + " | Window:[" + this.window_offset + "," + 
+          (this.window_offset + this.window_width) + "] |"
+
+    dx = textWidth(txt) + 3;
+
     text(txt, this.x, this.y);
 
     if (!this.is_recording) {
@@ -294,16 +306,108 @@ class RecorderViz {
     rect(this.x, dy, w, h);
 
     pop();
+
+    // Also, submit recog task
+    if (g_worker != undefined) {
+      if (this.window_width + this.window_offset <= this.buffer.length) {
+        if (g_worker) {
+          let ffts = this.buffer.slice(this.window_offset, 
+                                       this.window_offset + this.window_width);
+          if (ffts.length > 0) {
+            g_worker.postMessage({
+              "tag": "Predict",
+              "ffts": ffts
+            });
+          }
+        } else {
+          console.log("Should do non-worker version here.");
+        }
+        this.window_offset += this.window_delta;
+      }
+    }
+  }
+}
+
+class Button {
+  constructor(txt) {
+    this.pos = new p5.Vector(32, 280);
+    this.w = 50;
+    this.h = 50;
+    this.is_enabled = true;
+    this.is_hovered = false;
+    this.is_pressed = false;
+    this.clicked = function() {}
+    this.released = function() {}
+    this.txt = txt;
+  }
+  Render() {
+    if (!this.is_enabled) {
+      this.is_hovered = false;
+      this.is_pressed = false;
+    }
+    push();
+    let c = "";
+    if (!this.is_enabled) {
+      c = "#ccc";
+    } else {
+      if (!this.is_hovered) {
+        c = "#333";
+      } else {
+        if (this.is_pressed) {
+          c = "#822";
+        } else {
+          c = "#c88";
+        }
+      }
+    }
+
+    noFill();
+    stroke(c);
+
+    const x = this.pos.x, y = this.pos.y, w = this.w, h = this.h;
+    if (!this.is_enabled) {
+      line(x, y, x+w, y+h); line(x+w, y, x, y+h);
+    }
+
+    rect(x, y, w, h);
+    fill(c);
+    textSize(h / 3);
+    textAlign(CENTER, CENTER);
+    noStroke();
+    text(this.txt, x+w/2, y+h/2);
+    pop();
+  }
+  Hover(mx, my) {
+    if (!this.is_enabled) return;
+    if (mx >= this.pos.x          && my >= this.pos.y &&
+        mx <= this.pos.x + this.w && my <= this.pos.y + this.h) {
+      this.is_hovered = true;
+    } else {
+      this.is_hovered = false;
+    }
+  }
+  OnPressed() {
+    if (!this.is_enabled) return;
+    if (!this.is_pressed) {
+      this.is_pressed = true;
+      this.clicked();
+    }
+  }
+  OnReleased() {
+    if (!this.is_enabled) return;
+    if (this.is_pressed) {
+      this.is_pressed = false;
+      this.released();
+    }
   }
 }
 
 class PathfinderViz {
   constructor() {
-    this.x = 32;
-    this.y = 108;
+    this.x = 16;
+    this.y = 140;
 
     this.py2idx = {};
-    this.graph = createGraphics(512, 400);
 
     this.result = "x";
     this.predict_time = 0;
@@ -325,11 +429,13 @@ class PathfinderViz {
 
     //text("Result panel", this.x, this.y);
     fill(128);
-    text("tfjs " + tf.version.tfjs, this.x, this.y);
-    //image(this.graph, this.x, this.y + TEXT_SIZE);
+    if (g_tfjs_version == undefined) {
+
+    }
+    text(g_tfjs_version, this.x, this.y);
     
     fill(32);
-    if (this.result != "") {
+    if (this.result != undefined) {
       text("Result: " + this.result, this.x, this.y + TEXT_SIZE);
       text("Predict time: " + this.predict_time + " ms", this.x, this.y + TEXT_SIZE*2);
       text("Decode time: " + this.decode_time + " ms", this.x, this.y + TEXT_SIZE*3);
@@ -408,6 +514,7 @@ var currentPrediction = "";
 var rotation = 0.0;
 
 let g_frame_count = 0;
+let g_last_draw_ms = 0;
 let g_input_audio_stats_viz = new AudioStatsViz();
 let g_downsp_audio_stats_viz = new AudioStatsViz();
 
@@ -419,6 +526,15 @@ let g_audio;
 let g_audio_file_input;
 let g_audio_elt;
 
+let g_buttons = [];
+
+function OnPredictionResult(res) {
+  const d = res.data;
+  console.log(d.Decoded);
+  g_pathfinder_viz.SetResult(d.Decoded, d.PredictionTime, d.DecodeTime);
+  OnNewPinyins(d.Decoded.split(" "));
+}
+
 async function setup() {
   g_audio_file_input = document.getElementById("audio_input");
   g_audio_file_input.addEventListener("input", async (x) => {
@@ -428,21 +544,7 @@ async function setup() {
     x.target.files.forEach((f) => {
       the_file = f;
     })
-    if (the_file) {
-      g_audio_elt = createElement("audio");  // p5.js-wrapped object
-      g_audio_elt.attribute("controls", "")
-      g_audio_elt.elt.src = URL.createObjectURL(the_file);
-      g_audio_elt.position(280, 16);
-
-      console.log(the_file);
-      
-      // create some audio context
-      let audio_context = new AudioContext();
-      let source = audio_context.createMediaElementSource(g_audio_elt.elt);
-      let m = await audio_context.audioWorklet.addModule('my-processor.js');
-      const myProcessor = await CreateMyProcessor(audio_context);
-      source.connect(myProcessor);
-    }
+    if (the_file) { CreateAudioInput(the_file); }
   });
 
   createCanvas(640, 640);
@@ -452,137 +554,127 @@ async function setup() {
   g_loudness_vis = new LoudnessVis();
   g_fft_vis = new FFTVis();
 
-  let b0, b2;
-
-  b0 = createButton("Mic");
-  b0.position(16, 16);
-  b0.mousePressed(() => {
-    g_audio = new MicrophoneInput(512);
-    b2.elt.disabled = true;
-    b0.elt.disabled = true;
-  });
-
-  b2 = createButton("File");
-  b2.position(56, 16);
-  b2.mousePressed(() => {
-    g_audio_file_input.click();
-    b2.elt.disabled = true;
-    b0.elt.disabled = true;
-  });
-
-  let b, b1;
-  b = createButton("Load model");
-  b.position(112, 16);
-  b.mousePressed(async () => {
-    g_model = await LoadModel();
-    b1.elt.disabled = false;
-  })
-
-  b1 = createButton("Predict");
-  b1.position(206, 16);
-  b1.elt.disabled = true;
-  b1.mousePressed(async() => {
-    console.log(g_recorderviz.buffer)
-    const ms0 = millis();
-    temp0 = await DoPrediction(g_recorderviz.buffer);
-    const ms1 = millis();
-    //g_pathfinder_viz.RenderPredictionOutput(temp0);
-    temp0array = []; // for ctc
-    const T = temp0.shape[1];
-    const S = temp0.shape[2];
-    for (let t=0; t<T; t++) {
-      let line = [];
-      let src = temp0.slice([0, t, 0], [1, 1, S]).dataSync();
-      for (let s=0; s<S; s++) {
-        line.push(src[s]);
-      }
-      temp0array.push(line);
-    }
-    let blah = Decode(temp0array, 10, S-1);
-    let out = ""
-    blah[0].forEach((x) => {
-      out = out + PINYIN_LIST[x] + " "
-    });
-    const ms2 = millis();
-    g_pathfinder_viz.SetResult(out, ms1-ms0, ms2-ms1);
-    console.log(out);
-  });
-
   g_textarea = createElement("textarea", "");
   g_textarea.size(320, 50);
   g_textarea.position(32, STATUS_Y + 100)
   g_textarea.hide();
 
-  g_downsp_audio_stats_viz.x = 130;
-}
+  g_downsp_audio_stats_viz.x = 110;
 
-function DrawMFCC(mfcc, g) {
-  g.clear();
-  g.push();
-  g.strokeWeight(1);
-  const W = mfcc.length;
-  const H = mfcc[0].length;
-  
-  const from = color(218, 165, 32);
-  const to = color(72, 61, 139);
-  
-  for (let x=0; x<W; x++) {
-    for (let y=0; y<H; y++) {
-      const val = mfcc[x][y];
-      //const norm_val = map(val, -10, 30, 0, 1);
-      g.stroke(lerpColor(from, to, val));
-      //g.stroke(color(norm_val*255, norm_val*255, 255));
-      g.point(x, y);
+  // REC button
+  let btn_rec = new Button("REC");
+  btn_rec.pos.x = 16;
+  btn_rec.pos.y = 288;
+  btn_rec.w = 80;
+  btn_rec.h = 80;
+  btn_rec.clicked = function() {
+    g_recorderviz.StartRecording();
+  }
+  btn_rec.released = function() {
+    g_recorderviz.StopRecording();
+  }
+  g_buttons.push(btn_rec);
+
+  // MIC button & FILE button
+  let btn_mic = new Button("Mic");
+  let btn_file = new Button("File");
+
+  btn_mic.pos.x = 16;
+  btn_mic.pos.y = 16;
+  btn_mic.clicked = function() {
+    SetupMicrophoneInput(512);
+    btn_mic.is_enabled = false; btn_file.is_enabled = false;
+  }
+  btn_file.pos.x = 80;
+  btn_file.pos.y = 16;
+  btn_file.clicked = function() {
+    g_audio_file_input.click();
+    b2.elt.disabled = true; b0.elt.disabled = true;
+  }
+  g_buttons.push(btn_mic);
+  g_buttons.push(btn_file);
+
+  // Load model & "Predict"
+  btn_load_model = new Button("Load Model");
+  btn_predict = new Button("Predict");
+
+  btn_load_model.w = 100;
+  btn_load_model.pos.x = 160;
+  btn_load_model.pos.y = 16;
+  btn_load_model.clicked = async function() {
+    g_model = await LoadModel();
+    btn_predict.is_enabled = true;
+    btn_load_model.is_enabled = false;
+  }
+
+  btn_predict.w = 100;
+  btn_predict.pos.x = 276;
+  btn_predict.pos.y = 16;
+  btn_predict.is_enabled = false;
+  btn_predict.clicked = async function() {
+    if (g_worker) {
+      g_worker.postMessage({
+        "tag": "Predict",
+        "ffts": g_recorderviz.buffer.slice()
+      });
+    } else {
+      console.log(g_recorderviz.buffer)
+      const ms0 = millis();
+      temp0 = await DoPrediction(g_recorderviz.buffer);
+      const ms1 = millis();
+      //g_pathfinder_viz.RenderPredictionOutput(temp0);
+      temp0array = []; // for ctc
+      const T = temp0.shape[1];
+      const S = temp0.shape[2];
+      for (let t=0; t<T; t++) {
+        let line = [];
+        let src = temp0.slice([0, t, 0], [1, 1, S]).dataSync();
+        for (let s=0; s<S; s++) {
+          line.push(src[s]);
+        }
+        temp0array.push(line);
+      }
+      let blah = Decode(temp0array, 5, S-1);
+      let out = ""
+      blah[0].forEach((x) => {
+        out = out + PINYIN_LIST[x] + " "
+      });
+      const ms2 = millis();
+      g_pathfinder_viz.SetResult(out, ms1-ms0, ms2-ms1);
+      console.log(out);
     }
   }
-  g.pop();
-}
+  g_buttons.push(btn_load_model);
+  g_buttons.push(btn_predict);
 
-function DrawDiffMatrix(diffs, g) {
-  g.clear();
-  g.push();
-  const H = diffs.length;
-  const W = diffs[0].length;
-  const from = color(218, 165, 32);
-  const to = color(72, 61, 139);
-  for (let y=0; y<H; y++) {
-    for (let x=0; x<W; x++) {
-      const val = diffs[y][x];
-      g.stroke(lerpColor(from, to, val));
-      g.point(x, y);
-    }
+  // Demo data.
+  let btn_demodata = new Button("Demo Data");
+  btn_demodata.w = 100;
+  btn_demodata.pos.x = 16;
+  btn_demodata.pos.y = height - btn_demodata.h - 2;
+  btn_demodata.clicked = function() {
+    g_recorderviz.buffer = TESTDATA;
+    g_recorderviz.StopRecording();
   }
-  g.pop();
+  g_buttons.push(btn_demodata);
+
+  SetupReadAlong();
 }
 
 function draw() {
+  let delta_ms = 0;
   const ms = millis();
   if (g_frame_count == 0) {
-  //  DrawMFCC(MFCC0, graph_mfcc0);
     g_recorderviz = new RecorderViz();
     g_pathfinder_viz = new PathfinderViz();
+  } else {
+    delta_ms = (ms - g_last_draw_ms);
   }
-  
+
   background(255);
   textSize(12);
-  
-  // cost matrix
-  if(0) {
-    push();
-    translate(16, 32);
-    rotate(PI/2);
-    image(graph_rec_mfcc, 0, 0);
-    pop();
-    push();
-    translate(32, 16);
-    image(graph_mfcc0, 0, 0);
-    pop();
-    
-    image(graph_diff, 32, 32);
-  }
-  
   push();
-  
+
   if (soundReady) {
     fill(0);
     noStroke();
@@ -590,7 +682,6 @@ function draw() {
     //g_loudness_vis.Render(loudness.total);
     g_fft_vis.Render();
     textAlign(LEFT, TOP);
-    
     if (g_recording) {
       fill(0, 0, 255);
       noStroke();
@@ -603,10 +694,24 @@ function draw() {
     g_pathfinder_viz.Render();
   }
 
+  const mx = mouseX, my = mouseY;
+  g_buttons.forEach((b) => {
+    b.Hover(mx, my);
+  })
+
+  g_buttons.forEach((b) => {
+    b.Render();
+  })
   pop();
 
+  // Read-along part
+  RenderReadAlong(delta_ms);
+
   g_frame_count ++;
+  g_last_draw_ms = ms;
 }
+
+// Callbacks from sound
 
 function SoundDataCallbackMyAnalyzer(buffer, downsampled, fft_frames) {
   soundReady = true;
@@ -626,6 +731,8 @@ function soundDataCallback(soundData) {
   g_recorderviz.AddSpectrumIfRecording(amplitudeSpectrum, ms);
 }
 
+// p5js input
+
 function keyPressed() {
   if (key == 'r') {
     g_recorderviz.StartRecording();
@@ -644,19 +751,25 @@ function keyPressed() {
     })
     g_textarea.value(txt);
   } else if (key == 'o') {
+    g_textarea.show();
+    const x = g_recorderviz.buffer;
     let txt = "[";
-    temp0array.forEach((line) => {
-      txt += "[";
+    x.forEach((line) => {
+      txt += "["
       for (let i=0; i<line.length; i++) {
-        if (i > 0) 
-          txt += ",";
-
+        if (i>0) {
+          txt += ","
+        }
         txt += line[i]
       }
-      txt += "],\n";
-    });
-    txt += "]";
+      txt += "],\n"
+    })
+    txt += "]\n";
     g_textarea.value(txt);
+  }
+  
+  {
+    ReadAlongKeyPressed(key, keyCode);
   }
 }
 
@@ -664,4 +777,18 @@ function keyReleased() {
   if (key == 'r') {
     g_recorderviz.StopRecording();
   }
+}
+
+function mousePressed() {
+  g_buttons.forEach((b) => {
+    if (b.is_hovered) {
+      b.OnPressed();
+    }
+  })
+}
+
+function mouseReleased() {
+  g_buttons.forEach((b) => {
+    b.OnReleased();
+  });
 }

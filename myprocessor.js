@@ -115,4 +115,4 @@ class MyProcessor extends AudioWorkletProcessor {
   }
 }
 
-registerProcessor('my-processor', MyProcessor)
+registerProcessor('myprocessor', MyProcessor)

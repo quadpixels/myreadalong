@@ -89,8 +89,17 @@ function Decode(probs, beam_size, blank) {
 
   for (let t=0; t<T; t++) {
     let next_beam = new Beam();
+
+    let temp = [];
+    for (let s=0; s<S; s++) {
+      temp.push(probs[t][s]);
+    }
+    temp.sort();
+    const thresh = temp[Math.max(20, parseInt(temp.length * 0.1))];
+
     for (let s=0; s<S; s++) {
       const p = probs[t][s];
+      if (p < thresh) continue;
       for (let i=0; i<beam.entries.length; i++) {
         const entry = beam.entries[i];
         const prefix = entry[0];
