@@ -1,15 +1,67 @@
 // 2021-10-09
 // audio stuff
+
+const COLOR0 = "rgba(167,83,90,1)"; // 满江红
+const COLOR_FFTBARS = "rgba(238,162,164,1)" // 牡丹粉红
+
 var normalized = [];
 var amplitudeSpectrum;
 var g_buffer = [];
 var g_model;
 var g_worker;
 let g_tfjs_version = undefined;
+var g_hovered_button = undefined;
 
 const STATUS_Y = 208;
 // Audio processor
 var g_my_processor;
+
+const W0 = 480, H0 = 854;
+var W = 480, H = 854, WW, HH;
+var prevW = W, prevH = H;
+var g_scale = 1;
+var g_dirty = 0;
+
+function windowResized() {
+  OnWindowResize();
+}
+
+function OnWindowResize() {
+  if (true) {
+    WW = windowWidth;
+    HH = windowHeight;
+    let ratio1 = WW * 1.0 / HH; // 432/688 = 0.6279
+    let ratio0 = W0 * 1.0 / H0; // 400/720 = 0.5556
+    
+    const KEEP_ASPECT_RATIO = true;
+    if (KEEP_ASPECT_RATIO) {
+      if (ratio1 > ratio0) {
+        H = HH;
+        W = H * W0 / H0
+        g_scale = HH / H0;
+      } else {
+        W = WW;
+        H = W * H0 / W0
+        g_scale = WW / W0;
+      }
+    } else {
+      H = HH; W = WW;
+      g_scale = 1;
+    }
+    
+    resizeCanvas(W, H);
+    
+    prevW = W; prevH = H;
+    g_dirty += 2;
+  }
+}
+
+var g_btn_rec, g_btn_mic, g_btn_file, g_btn_demo_data;
+var g_btn_load_model, g_btn_predict;
+
+function VerticalLayout() {
+
+}
 
 class LoudnessVis {
   constructor() {
@@ -88,7 +140,8 @@ class FFTVis {
 
     const fft = this.fft;
     const TEXT_SIZE = 16;
-    fill(122);
+
+    fill(COLOR0);
     for (let i=0; i<this.nshown && i < fft.length; i++) {
       const x0 = map(i, 0, this.nshown-1, this.x, this.x+this.w);
       const x1 = map(i+1,0,this.nshown-1, this.x, this.x+this.w);
@@ -182,7 +235,7 @@ class AudioStatsViz {
 
     const dy_min = this.y, dy_max = dy_min + 13;
     noFill();
-    stroke(122);
+    stroke(COLOR0);
     for (let i=1; i<b.length && i < this.w; i++) {
       const idx0 = parseInt(map(i-1, 0, this.w-1, 0, b.length-1));
       const idx1 = parseInt(map(i  , 0, this.w-1, 0, b.length-1));
@@ -346,22 +399,28 @@ class Button {
       this.is_pressed = false;
     }
     push();
-    let c = "";
+
+    let c = color(48, 48, 48);
+    let f = color(255, 255, 255, 192);
     if (!this.is_enabled) {
-      c = "#ccc";
+      c = "#777";
+      f = color(128, 128, 128, 192);
     } else {
       if (!this.is_hovered) {
-        c = "#333";
+        c = color(48, 48, 48);
+        f = color(255, 255, 255, 192);
       } else {
         if (this.is_pressed) {
-          c = "#822";
+          c = color(56, 32, 32); // 高粱红
+          f = color(192, 44, 56, 192);
         } else {
-          c = "#c88";
+          //c = color(56, 32, 32); // 莓红
+          //f = color(190, 90, 101, 192);
         }
       }
     }
 
-    noFill();
+    fill(f);
     stroke(c);
 
     const x = this.pos.x, y = this.pos.y, w = this.w, h = this.h;
@@ -562,56 +621,56 @@ async function setup() {
   g_downsp_audio_stats_viz.x = 110;
 
   // REC button
-  let btn_rec = new Button("REC");
-  btn_rec.pos.x = 16;
-  btn_rec.pos.y = 288;
-  btn_rec.w = 80;
-  btn_rec.h = 80;
-  btn_rec.clicked = function() {
+  g_btn_rec = new Button("REC");
+  g_btn_rec.w = 120;
+  g_btn_rec.h = 100;
+  g_btn_rec.pos.x = W0/2 - g_btn_rec.w/2;
+  g_btn_rec.pos.y = H0 - g_btn_rec.h - 12;
+  g_btn_rec.clicked = function() {
     g_recorderviz.StartRecording();
   }
-  btn_rec.released = function() {
+  g_btn_rec.released = function() {
     g_recorderviz.StopRecording();
   }
-  g_buttons.push(btn_rec);
+  g_buttons.push(g_btn_rec);
 
   // MIC button & FILE button
-  let btn_mic = new Button("Mic");
-  let btn_file = new Button("File");
+  g_btn_mic = new Button("Mic");
+  g_btn_file = new Button("File");
 
-  btn_mic.pos.x = 16;
-  btn_mic.pos.y = 16;
-  btn_mic.clicked = function() {
+  g_btn_mic.pos.x = 16;
+  g_btn_mic.pos.y = 16;
+  g_btn_mic.clicked = function() {
     SetupMicrophoneInput(512);
-    btn_mic.is_enabled = false; btn_file.is_enabled = false;
+    g_btn_mic.is_enabled = false; g_btn_file.is_enabled = false;
   }
-  btn_file.pos.x = 80;
-  btn_file.pos.y = 16;
-  btn_file.clicked = function() {
+  g_btn_file.pos.x = 80;
+  g_btn_file.pos.y = 16;
+  g_btn_file.clicked = function() {
     g_audio_file_input.click();
-    b2.elt.disabled = true; b0.elt.disabled = true;
+    g_btn_mic.is_enabled = false; g_btn_file.is_enabled = false;
   }
-  g_buttons.push(btn_mic);
-  g_buttons.push(btn_file);
+  g_buttons.push(g_btn_mic);
+  g_buttons.push(g_btn_file);
 
   // Load model & "Predict"
-  btn_load_model = new Button("Load Model");
-  btn_predict = new Button("Predict");
+  g_btn_load_model = new Button("Load\nModel");
+  g_btn_predict = new Button("Pre-\ndict");
 
-  btn_load_model.w = 100;
-  btn_load_model.pos.x = 160;
-  btn_load_model.pos.y = 16;
-  btn_load_model.clicked = async function() {
+  g_btn_load_model.w = 60;
+  g_btn_load_model.pos.x = 280;
+  g_btn_load_model.pos.y = 16;
+  g_btn_load_model.clicked = async function() {
     g_model = await LoadModel();
-    btn_predict.is_enabled = true;
-    btn_load_model.is_enabled = false;
+    g_btn_predict.is_enabled = true;
+    g_btn_load_model.is_enabled = false;
   }
 
-  btn_predict.w = 100;
-  btn_predict.pos.x = 276;
-  btn_predict.pos.y = 16;
-  btn_predict.is_enabled = false;
-  btn_predict.clicked = async function() {
+  g_btn_predict.w = 50;
+  g_btn_predict.pos.x = 360;
+  g_btn_predict.pos.y = 16;
+  g_btn_predict.is_enabled = false;
+  g_btn_predict.clicked = async function() {
     if (g_worker) {
       g_worker.postMessage({
         "tag": "Predict",
@@ -644,19 +703,19 @@ async function setup() {
       console.log(out);
     }
   }
-  g_buttons.push(btn_load_model);
-  g_buttons.push(btn_predict);
+  g_buttons.push(g_btn_load_model);
+  g_buttons.push(g_btn_predict);
 
   // Demo data.
-  let btn_demodata = new Button("Demo Data");
-  btn_demodata.w = 100;
-  btn_demodata.pos.x = 16;
-  btn_demodata.pos.y = height - btn_demodata.h - 2;
-  btn_demodata.clicked = function() {
+  let g_btn_demo_data = new Button("Demo\nData");
+  g_btn_demo_data.w = 60;
+  g_btn_demo_data.pos.x = 148;
+  g_btn_demo_data.pos.y = 16;
+  g_btn_demo_data.clicked = function() {
     g_recorderviz.buffer = TESTDATA;
     g_recorderviz.StopRecording();
   }
-  g_buttons.push(btn_demodata);
+  g_buttons.push(g_btn_demo_data);
 
   SetupReadAlong();
 }
@@ -674,6 +733,8 @@ function draw() {
   background(255);
   textSize(12);
   push();
+
+  scale(g_scale);
 
   if (soundReady) {
     fill(0);
@@ -694,21 +755,48 @@ function draw() {
     g_pathfinder_viz.Render();
   }
 
-  const mx = mouseX, my = mouseY;
+  const mx = mouseX / g_scale, my = mouseY / g_scale;
+
+  // 放在最底层
+  RenderReadAlong(delta_ms);
+
+  let has_hovered_buttons = false;
+  g_hovered_button = undefined;
+
   g_buttons.forEach((b) => {
     b.Hover(mx, my);
+    if (b.is_hovered) {
+      has_hovered_buttons = true;
+      g_hovered_button = b;
+    }
   })
+  if (!has_hovered_buttons) {
+    g_aligner.Hover(mx, my);
+  } else {
+    g_aligner.is_hovered = false;
+  }
 
   g_buttons.forEach((b) => {
     b.Render();
   })
+
   pop();
 
-  // Read-along part
-  RenderReadAlong(delta_ms);
+  push();
+  noStroke();
+  fill(192);
+  textAlign(RIGHT, TOP);
+  text(parseInt(width) + "x" + parseInt(height) + "\n" + "x" + g_scale.toFixed(2), width-4, 4);
+
+  pop();  // end scale
+
 
   g_frame_count ++;
   g_last_draw_ms = ms;
+
+  if (g_frame_count == 1 || (g_frame_count % 60 == 0)) {
+    OnWindowResize();
+  }
 }
 
 // Callbacks from sound
@@ -779,7 +867,14 @@ function keyReleased() {
   }
 }
 
-function mousePressed() {
+// Touch or mouse input events
+
+function touchStarted(event) {
+  TouchOrMouseStarted(event);
+}
+
+function mousePressed(event) {
+  TouchOrMouseStarted(event);
   g_buttons.forEach((b) => {
     if (b.is_hovered) {
       b.OnPressed();
@@ -787,8 +882,20 @@ function mousePressed() {
   })
 }
 
-function mouseReleased() {
+function touchEnded(event) {
+  TouchOrMouseEnded(event);
+}
+function mouseReleased(event) {
+  TouchOrMouseEnded(event);
   g_buttons.forEach((b) => {
     b.OnReleased();
   });
+}
+
+function touchMoved(event) {
+  TouchOrMouseMoved(event);
+}
+
+function mouseMoved() {
+  TouchOrMouseMoved(event);
 }

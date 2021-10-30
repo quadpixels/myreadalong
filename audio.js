@@ -11,8 +11,9 @@ function SetupMicrophoneInput(bufferSize) {
   let context = new AudioContext();
 
   var errorCallback = function errorCallback(err) {
-    console.log("errorCallback");
-    console.log(err)
+    g_pathfinder_viz.result = err
+    g_btn_mic.is_enabled = true;
+    g_btn_file.is_enabled = true;
   };
 
   try {
@@ -30,7 +31,7 @@ function SetupMicrophoneInput(bufferSize) {
     };
 
     try {
-      console.log('Asking for permission...');
+      g_
       navigator.getUserMedia(constraints, successCallback, errorCallback);
     } catch (e) {
       var p = navigator.mediaDevices.getUserMedia(constraints);

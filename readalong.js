@@ -1,6 +1,9 @@
 
 class Aligner {
-  constructor() {}
+  constructor() {
+    this.w = 478; this.h = 480;
+    this.Reset();
+  }
   
   LoadData(data) {
     this.data = data.slice();
@@ -43,6 +46,9 @@ class Aligner {
   
   Render() {
     push();
+    stroke(COLOR0);
+    //rect(g_readalong_x, g_readalong_y, this.w, this.h);
+
     noStroke();
     fill(0);
     
@@ -51,7 +57,10 @@ class Aligner {
     textSize(TEXT_SIZE);
     textFont('KaiTi');
     
-    let y = g_readalong_y, x = g_readalong_w*0.23 + g_readalong_x;
+    const translate_y = -this.GetPanY();
+    const margin = 64;
+
+    let y = g_readalong_y + translate_y, x = g_readalong_x;
     for (let i=0; i<this.data.length; i++) {
       const line = this.data[i][0];
       
@@ -82,19 +91,32 @@ class Aligner {
           pidx ++;
         }
         
-        let c0 = color(128, 128, 128), c = c0;
+        let alpha = 255, c0, c;
+        if (y < g_readalong_y) {
+          alpha =map(y, g_readalong_y, g_readalong_y-margin, 255, 16);
+        } else if (y > g_readalong_y + this.h) {
+          alpha = map(y, g_readalong_y + this.h, g_readalong_y + this.h + margin,
+            255, 16);
+        }
+
+        // 要是超出视野的话就用最低alpha值
+        alpha = constrain(alpha, 16, 255);
+
+        c0 = color(128, 128, 128, alpha), c = c0;
         if (done) {
-          c0 = color(32, 32, 255);
+          c0 = color(97, 100, 159, alpha);
         }
         if (!done && highlighted > 0) {
-          c = lerpColor(c0, color(192, 192, 192), highlighted);
+          c = lerpColor(c0, color(192, 192, 192, alpha), highlighted);
         } else {
           c = c0;
         }
         
         dx = dx + textWidth(ch);
-        fill(c);
-        text(ch, dx+x, y);
+        if (alpha > 0) {
+          fill(c);
+          text(ch, dx+x, y);
+        }
       }
       
       y += TEXT_SIZE*1.2;
@@ -261,6 +283,10 @@ class Aligner {
     this.line_idx = 0;
     this.char_idx = 0;
     this.pinyin_idx = 0;
+    this.pan_y = 0;
+    this.start_drag_my = 0;
+    this.is_dragging = false;
+    this.is_hovered = false;
   }
   
   do_NextStep() {
@@ -303,6 +329,37 @@ class Aligner {
     if (x < 0) { for (let i=0; i>x; i--) { this.do_PrevStep(); } }
     else if (x > 0) { for (let i=0; i<x; i++) { this.do_NextStep(); } }
   }
+
+  Hover(mx, my) {
+    if (mx >= g_readalong_x && mx <= g_readalong_x + g_readalong_w &&
+        my >= g_readalong_y && my <= g_readalong_y + g_readalong_h) {
+      this.is_hovered = true;
+    }
+  }
+
+  StartDrag(my) {
+    this.start_drag_my = my;
+    this.drag_my = my;
+    this.start_drag_pan_y = this.pan_y;
+    this.is_dragging = true;
+  }
+
+  EndDrag() {
+    this.pan_y = this.GetPanY();
+    this.is_dragging = false;
+  }
+
+  OnDragMouseUpdated(my) {
+    this.drag_my = my;
+  }
+
+  GetPanY() {
+    if (this.is_dragging) {
+      return this.start_drag_pan_y - (this.drag_my - this.start_drag_my);
+    } else {
+      return this.pan_y;
+    }
+  }
 }
 
 let g_aligner;
@@ -324,7 +381,7 @@ function LoadNextDataset() {
 
 let g_message = "";
 
-let g_readalong_x = 112, g_readalong_y = 280;
+let g_readalong_x = 0, g_readalong_y = 280;
 let g_readalong_w = 640 - 112, g_readalong_h = 480 - g_readalong_y;
 function RenderReadAlong(deltaTime) {
   // Fade lights
