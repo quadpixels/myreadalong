@@ -104,7 +104,7 @@ class Aligner {
 
         c0 = color(128, 128, 128, alpha), c = c0;
         if (done) {
-          c0 = color(97, 100, 159, alpha);
+          c0 = color(252, 183, 10, alpha);
         }
         if (!done && highlighted > 0) {
           c = lerpColor(c0, color(192, 192, 192, alpha), highlighted);

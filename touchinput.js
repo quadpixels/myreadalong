@@ -15,9 +15,6 @@ function TouchOrMouseStarted(event) {
     g_pointer_y = touches[0].y;
     g_touch0_identifier = event.changedTouches[0].identifier;
   
-    UpdateHover();
-    
-  
     // Code dupe, not g00d !
     g_viewport_drag_y_last = 0; g_viewport_drag_x_last = 0;
     g_viewport_drag_y = 0; g_viewport_drag_x = 0;
