@@ -416,7 +416,7 @@ class Button {
           f = color(192, 44, 56, 192);
         } else {
           c = color(56, 32, 32); // 莓红
-          f = color(190, 90, 101, 192);
+          f = color(255, 255, 255, 192);
         }
       }
     }
@@ -622,10 +622,11 @@ async function setup() {
 
   // REC button
   g_btn_rec = new Button("REC");
-  g_btn_rec.w = 120;
+  g_btn_rec.w = 220;
   g_btn_rec.h = 100;
   g_btn_rec.pos.x = W0/2 - g_btn_rec.w/2;
   g_btn_rec.pos.y = H0 - g_btn_rec.h - 12;
+  g_btn_rec.is_enabled = false;
   g_btn_rec.clicked = function() {
     g_recorderviz.StartRecording();
   }
@@ -643,12 +644,14 @@ async function setup() {
   g_btn_mic.clicked = function() {
     SetupMicrophoneInput(512);
     g_btn_mic.is_enabled = false; g_btn_file.is_enabled = false;
+    g_btn_rec.is_enabled = true;
   }
   g_btn_file.pos.x = 80;
   g_btn_file.pos.y = 16;
   g_btn_file.clicked = function() {
     g_audio_file_input.click();
     g_btn_mic.is_enabled = false; g_btn_file.is_enabled = false;
+    g_btn_rec.is_enabled = true;
   }
   g_buttons.push(g_btn_mic);
   g_buttons.push(g_btn_file);
@@ -716,6 +719,36 @@ async function setup() {
     g_recorderviz.StopRecording();
   }
   g_buttons.push(g_btn_demo_data);
+
+  let btn_next = new Button(">");
+  btn_next.pos.x = 440;
+  btn_next.w = 34;
+  btn_next.h = 100;
+  btn_next.pos.y = 500;
+  btn_next.clicked = function() {
+    LoadNextDataset();
+  }
+  g_buttons.push(btn_next);
+
+  let btn_prev = new Button("<");
+  btn_prev.pos.x = 440;
+  btn_prev.w = 34;
+  btn_prev.h = 100;
+  btn_prev.pos.y = 390;
+  btn_prev.clicked = function() {
+    LoadPrevDataset();
+  }
+  g_buttons.push(btn_prev);
+
+  let btn_reset = new Button("R");
+  btn_reset.pos.x = 440;
+  btn_reset.pos.y = 610;
+  btn_reset.w = 34;
+  btn_reset.h = 50;
+  btn_reset.clicked = function() {
+    g_aligner.Reset();
+  }
+  g_buttons.push(btn_reset);
 
   SetupReadAlong();
 }
@@ -794,7 +827,7 @@ function draw() {
   noStroke();
   fill(192);
   textAlign(LEFT, TOP);
-  text(parseInt(width) + "x" + parseInt(height) + "x" + g_scale.toFixed(2) + " " + g_touch_state + " " + g_btn_rec.is_hovered + " " + g_btn_rec.is_pressed, 1, 1);
+  text(parseInt(width) + "x" + parseInt(height) + "x" + g_scale.toFixed(2) + " " + windowWidth + "x" + windowHeight, 1, 1);
 
   pop();  // end scale
 
@@ -879,18 +912,15 @@ function keyReleased() {
 
 function touchStarted(event) {
   TouchOrMouseStarted(event);
-  const mx = g_pointer_x / g_scale, my = g_pointer_y / g_scale;
-  //g_pathfinder_viz.result = "TouchStarted " + mx + " " + my;
-  g_buttons.forEach((b) => { // TODO: 为什么需要在这里再加一下
-    b.Hover(mx, my);
-    if (b.is_hovered) {
-      b.OnPressed();
-    }
-  })
 }
 
 function mousePressed(event) {
   TouchOrMouseStarted(event);
+
+  // TODO：为什么在手机上按一下既会触发touchevent又会触发mouseevent
+  if (millis() < g_prev_touch_millis + DEBOUNCE_THRESH) return;
+
+
   const mx = g_pointer_x / g_scale, my = g_pointer_y / g_scale;
   g_buttons.forEach((b) => { // TODO: 为什么需要在这里再加一下
     b.Hover(mx, my);
