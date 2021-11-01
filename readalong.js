@@ -377,7 +377,10 @@ function SetupReadAlong() {
 }
 
 let g_data_idx = 0;
-function LoadDataset(idx) { g_aligner.LoadData(DATA[idx], TITLES[idx], FONT_SIZES[idx]); }
+function LoadDataset(idx) { 
+  g_aligner.LoadData(DATA[idx], TITLES[idx], FONT_SIZES[idx]); 
+  g_aligner.Reset();
+}
 function LoadPrevDataset() {
   g_data_idx --; if (g_data_idx < 0) { g_data_idx = 0; }
   LoadDataset(g_data_idx); 
