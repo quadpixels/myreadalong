@@ -282,6 +282,7 @@ class RecorderViz {
   }
 
   StartRecording() {
+    this.graph.clear();
     this.is_recording = true;
     this.buffer = [];
     this.start_record_ms = millis();
@@ -294,10 +295,7 @@ class RecorderViz {
     return ret;
   }
 
-  StopRecording() {
-    this.is_recording = false;
-    this.duration_ms = millis() - this.start_record_ms;
-    
+  RenderAllFFTs() {
     // Render fft
     const g = this.graph;
     g.clear();
@@ -315,8 +313,28 @@ class RecorderViz {
     }
   }
 
+  RenderOneLineOfFFT(fft, x) {
+    const g = this.graph;
+    if (x >= g.width) return;
+    g.noFill();
+    const c0 = color(128, 128, 128);
+    const c1 = color(0,   0,   0);
+    for (let j=0; j<g.height; j++) {
+      const idx = parseInt(j/(g.height-1)*(fft.length-1));
+      const intensity = constrain(this.myMap(fft[idx]), 0, 1);
+      g.stroke(lerpColor(c0, c1, intensity));
+      g.point(x, g.height - 1 - j);
+    }
+  }
+
+  StopRecording() {
+    this.is_recording = false;
+    this.duration_ms = millis() - this.start_record_ms;
+  }
+
   AddSpectrumIfRecording(fft) {
     if (!this.is_recording) return;
+    this.RenderOneLineOfFFT(fft, this.buffer.length);
     this.buffer.push(fft);
   }
 
@@ -353,9 +371,11 @@ class RecorderViz {
     const h = this.graph.height;
     let dy = this.y + 15;
     const w = this.buffer.length;
-    if (!this.is_recording)
-      image(this.graph, this.x, dy);
+    image(this.graph, this.x, dy);
     noFill();
+    stroke("#33f");
+    const dx1 = this.x + this.window_offset;
+    rect(dx1, dy, this.window_width, h);
     stroke(32);
     rect(this.x, dy, w, h);
 
@@ -431,7 +451,7 @@ class Button {
 
     rect(x, y, w, h);
     fill(c);
-    textSize(h / 3);
+    textSize(Math.max(14, h / 3));
     textAlign(CENTER, CENTER);
     noStroke();
     text(this.txt, x+w/2, y+h/2);
@@ -489,16 +509,15 @@ class PathfinderViz {
     //text("Result panel", this.x, this.y);
     fill(128);
     if (g_tfjs_version == undefined) {
-
+      text("tfjs not loaded", this.x, this.y);
     }
     text(g_tfjs_version, this.x, this.y);
     
     fill(32);
-    if (this.result != undefined) {
-      text("Result: " + this.result, this.x, this.y + TEXT_SIZE);
-      text("Predict time: " + this.predict_time + " ms", this.x, this.y + TEXT_SIZE*2);
-      text("Decode time: " + this.decode_time + " ms", this.x, this.y + TEXT_SIZE*3);
-    }
+    
+    text("Result: " + this.result, this.x, this.y + TEXT_SIZE);
+    text("Predict time: " + this.predict_time + " ms", this.x, this.y + TEXT_SIZE*2);
+    text("Decode time: " + this.decode_time + " ms", this.x, this.y + TEXT_SIZE*3);
 
     pop();
   }
@@ -560,11 +579,52 @@ class PathfinderViz {
   }
 }
 
+class MovingWindowVis {
+  constructor() {
+    this.W0 = 40;
+    this.w = 100;
+    this.h = 32;
+    this.x = 0; this.y = 0;
+    this.weights = [];
+    this.UpdateWeights(6);
+  }
+  Render() {
+    const TEXT_SIZE = 13;
+    push();
+    noStroke();
+    fill(128);
+    text("PredWin W=" + this.W0, this.x, this.y);
+    //rect(this.x, this.y, this.w, this.h);
+    const len = this.weights.length;
+    stroke(32);
+    fill(220);
+    for (let i=0; i<len; i++) {
+      const x0 = map(i, 0, len, this.x, this.x+this.w);
+      const x1 = map(i+1,0,len, this.x, this.x+this.w);
+      const y0 = map(this.weights[i], 1, 0, this.y, this.y+this.h) + TEXT_SIZE;
+      const y1 = this.y+this.h + TEXT_SIZE;
+      rect(x0, y0, x1-x0, y1-y0);
+      //console.log(x0 + " " + x1 + " " + y0 + " " + y1)
+    }
+    pop();
+  }
+  UpdateWeights(l) {
+    this.len = l;
+    this.weights = [];
+    for (let i=0; i<l; i++) {
+      //const w = Math.exp(-i*i*0.04);
+      const w = 1;
+      this.weights.push(w);
+    }
+  }
+}
+
 var g_loudness_vis, g_fft_vis;
 var g_recording = false;
 //var g_rec_mfcc = [];
 //var graph_rec_mfcc;
 var graph_mfcc0, graph_diff;
+var g_moving_window_vis;
 
 var soundReady = true;
 
@@ -589,12 +649,75 @@ let g_buttons = [];
 
 function OnPredictionResult(res) {
   const d = res.data;
-  console.log(d.Decoded);
   g_pathfinder_viz.SetResult(d.Decoded, d.PredictionTime, d.DecodeTime);
   OnNewPinyins(d.Decoded.split(" "));
 }
 
+// For moving window stuff
+let g_py2idx = {};
+let g_weight_mask = 0;
+function OnUpdateWeightMask() {
+  const N = g_moving_window_vis.weights.length;
+  UpdateWeightMask(g_moving_window_vis.weights,
+                   g_aligner.GetNextPinyins(N));
+}
+function UpdateWeightMask(window_weights, next_pinyins) {
+  let m = [];
+  const W0 = g_moving_window_vis.W0;
+  for (let i=0; i<PINYIN_LIST.length; i++) {
+    m.push(0);
+  }
+  const N = min(next_pinyins.length, window_weights.length);
+  for (let i=0; i<N; i++) {
+    const p = next_pinyins[i];
+    const idxes = g_py2idx[p];
+    if (idxes == undefined) {
+      continue;
+    }
+    for (let j=0; j<idxes.length; j++) {
+      const idx = idxes[j];
+      if (m[idx] == 0) {
+        m[idx] = W0;
+      } else {
+        m[idx] *= window_weights[i];
+      }
+    }
+  }
+  for (let i=0; i<PINYIN_LIST.length; i++) {
+    m[i] += 1;
+  }
+  if (g_worker != undefined) {
+    g_worker.postMessage({
+      "tag": "weight_mask",
+      "weight_mask": m
+    });
+  }
+}
+function ResetWeightMask() {
+  if (g_worker != undefined) {
+    g_worker.postMessage({
+      "tag": "weight_mask",
+      "weight_mask": undefined
+    });
+  }
+}
+
 async function setup() {
+  // Setup window stuff
+  for (let i=0; i<PINYIN_LIST.length; i++) {
+    let p = PINYIN_LIST[i];
+    let j = 0;
+    for (; j<p.length; j++) {
+      if (p[j]>='0' && p[j]<='9') break;
+    }
+    p = p.slice(0, j);
+    if (!(p in g_py2idx)) {
+      g_py2idx[p] = [ i ];
+    } else {
+      g_py2idx[p].push(i);
+    }
+  }
+
   g_audio_file_input = document.getElementById("audio_input");
   g_audio_file_input.addEventListener("input", async (x) => {
     console.log("addEventListener");
@@ -612,6 +735,9 @@ async function setup() {
   graph_diff = createGraphics(512, 512);
   g_loudness_vis = new LoudnessVis();
   g_fft_vis = new FFTVis();
+  g_moving_window_vis = new MovingWindowVis();
+  g_moving_window_vis.x = 374;
+  g_moving_window_vis.y = 150;
 
   g_textarea = createElement("textarea", "");
   g_textarea.size(320, 50);
@@ -770,6 +896,26 @@ async function setup() {
   }
   g_buttons.push(btn_reset);
 
+  let btn_wgt_add = new Button("+");
+  btn_wgt_add.pos.x = 330;
+  btn_wgt_add.pos.y = 163;
+  btn_wgt_add.w = 32;
+  btn_wgt_add.h = 32;
+  btn_wgt_add.clicked = function() {
+    g_moving_window_vis.W0 *= 2;
+  }
+  g_buttons.push(btn_wgt_add);
+
+  let btn_wgt_sub = new Button("-");
+  btn_wgt_sub.pos.x = 294;
+  btn_wgt_sub.pos.y = 163;
+  btn_wgt_sub.w = 32;
+  btn_wgt_sub.h = 32;
+  btn_wgt_sub.clicked = function() {
+    g_moving_window_vis.W0 /= 2;
+  }
+  g_buttons.push(btn_wgt_sub);
+
   SetupReadAlong();
 }
 
@@ -789,9 +935,9 @@ function draw() {
 
   scale(g_scale);
 
+  fill(0);
+  noStroke();
   if (soundReady) {
-    fill(0);
-    noStroke();
 
     //g_loudness_vis.Render(loudness.total);
     g_fft_vis.Render();
@@ -801,12 +947,13 @@ function draw() {
       noStroke();
       text("REC " + g_rec_mfcc.length, 16, 16);
     }
-    
-    g_input_audio_stats_viz.Render();
-    g_downsp_audio_stats_viz.Render();
-    g_recorderviz.Render();
-    g_pathfinder_viz.Render();
   }
+
+  g_input_audio_stats_viz.Render();
+  g_downsp_audio_stats_viz.Render();
+  g_recorderviz.Render();
+  g_pathfinder_viz.Render();
+  g_moving_window_vis.Render();
 
   const mx = g_pointer_x / g_scale, my = g_pointer_y / g_scale;
   noFill();
