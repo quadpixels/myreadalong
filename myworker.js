@@ -19,16 +19,24 @@ async function LoadModel() {
   const ms1 = millis();
   console.log("[Worker] Model loading took " + (ms1-ms0) + " ms")
 
+  postMessage({
+    "TfjsVersion": "tfjs " + tf.version.tfjs + "(" + tf.getBackend() + ") [WebWorker]",
+    "TfjsBackend": tf.getBackend()
+  });
+
+  g_model = model;
+}
+
+async function PreheatModel() {
   const N = 400;
   let tb = tf.buffer([1, N, 200, 1]);
-  await model.predictOnBatch(tb.toTensor());
+  await g_model.predictOnBatch(tb.toTensor());
   const ms2 = millis();
   console.log("[Worker] Model preheat took " + (ms2-ms1) + " ms");
 
   postMessage({
-    "TfjsVersion": "tfjs " + tf.version.tfjs + "(" + tf.getBackend() + ") [WebWorker]"}
-  );
-  g_model = model;
+    "message": "preheat_complete"
+  })
 }
 
 function ScaleFFTDataPoint(x) {
@@ -40,6 +48,7 @@ function ScaleFFTDataPoint(x) {
 LoadModel();
 
 let weight_mask = undefined;
+let g_frameskip = 0;
 
 onmessage = async function(event) {
   if (event.data.tag == "Predict") {
@@ -75,7 +84,7 @@ onmessage = async function(event) {
       }
       temp0array.push(line);
     }
-    let blah = Decode(temp0array, 5, S-1);
+    let blah = Decode(temp0array, 5, S-1, g_frameskip);
     let out = ""
     blah[0].forEach((x) => {
       out = out + PINYIN_LIST[x] + " "
@@ -90,5 +99,7 @@ onmessage = async function(event) {
     });
   } else if (event.data.tag == "weight_mask") {
     weight_mask = event.data.weight_mask;
+  } else if (event.data.tag == "frameskip") {
+    g_frameskip = event.data.frameskip;
   }
 }

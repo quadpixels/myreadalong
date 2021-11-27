@@ -2,6 +2,7 @@
 // audio stuff
 
 const COLOR0 = "rgba(167,83,90,1)"; // 满江红
+const COLOR1 = "rgba(238,162,164,1)" // 牡丹粉红
 const COLOR_FFTBARS = "rgba(238,162,164,1)" // 牡丹粉红
 
 var g_audio_context;
@@ -11,6 +12,8 @@ var g_buffer = [];
 var g_model;
 var g_worker;
 let g_tfjs_version = undefined;
+let g_tfjs_backend = undefined;
+let g_tfjs_use_webworker = undefined;
 var g_hovered_button = undefined;
 
 const STATUS_Y = 208;
@@ -59,6 +62,7 @@ function OnWindowResize() {
 
 var g_btn_rec, g_btn_mic, g_btn_file, g_btn_demo_data;
 var g_btn_load_model, g_btn_predict;
+var g_btn_wgt_add, g_btn_wgt_sub, g_btn_frameskip_add, g_btn_frameskip_sub;
 
 function VerticalLayout() {
 
@@ -582,8 +586,8 @@ class PathfinderViz {
 class MovingWindowVis {
   constructor() {
     this.W0 = 40;
-    this.w = 100;
-    this.h = 32;
+    this.w = 80;
+    this.h = 24;
     this.x = 0; this.y = 0;
     this.weights = [];
     this.UpdateWeights(6);
@@ -619,12 +623,175 @@ class MovingWindowVis {
   }
 }
 
+class FrameskipVis {
+  constructor() {
+    this.frameskip = 0;
+    this.x = 274;
+    this.y = 132;
+  }
+
+  ChangeFrameskip(delta) {
+    this.frameskip += delta;
+    if (this.frameskip < 0) this.frameskip = 0;
+    g_worker.postMessage({
+      "tag": "frameskip",
+      "frameskip": this.frameskip
+    });
+  }
+
+  IncrementFrameskip() {
+    this.ChangeFrameskip(1);
+  }
+
+  DecrementFrameskip() {
+    this.ChangeFrameskip(-1);
+  }
+
+  Render() {
+    push();
+    noStroke();
+    fill(128);
+    text("CTC frameskip", this.x, this.y);
+    fill(0);
+    textSize(16);
+    text(""+this.frameskip, this.x, this.y+13);
+    pop();
+  }
+}
+
+function DrawLabel(label, x, y, w, h, highlighted = false) {
+  push();
+  rectMode(CENTER);
+  textAlign(CENTER, CENTER);
+  if (highlighted) {
+    fill(COLOR1)
+  } else {
+    noFill();
+  }
+  stroke("black");
+  rect(x, y, w, h);
+  textSize(15);
+  noStroke();
+  fill("black");
+  text(label, x, y);
+  pop();
+}
+
+class RunningModeVis {
+  constructor() {
+    this.x = 10;
+    this.w = 460;
+    this.h = 200;
+    this.info = "";
+    this.info_millis = 0;
+
+    this.visible = true;
+    this.y0 = -230;
+    this.y1 =   10;
+    this.anim = undefined;
+
+    this.y = this.y0;
+  }
+
+  Show() {
+    this.anim = "show";
+  }
+
+  Hide() {
+    this.anim = "hide";
+  }
+
+  SetInfo(x, timeout = 2000) {
+    this.info = x;
+    this.info_millis = timeout;
+  }
+
+  Render() {
+    if (!this.visible) return;
+    const TEXT_SIZE = 15;
+    push();
+    fill("rgba(255,255,255,0.95)");
+    rectMode(CORNER);
+    rect(this.x, this.y, this.w, this.h);
+
+    const PAD = 4;
+    const x0 = this.x + this.w * 0.34;
+    const x1 = this.x + this.w * 0.66;
+    const yc = this.y + this.h * 0.38;
+    const y1 = this.y + this.h * 0.25;
+    const y2 = this.y + this.h * 0.5;
+    noStroke();
+    textSize(15);
+    fill("black");
+    textAlign(CENTER, TOP);
+    text("WebWorker", x0, this.y+PAD);
+    text("Backend",   x1, this.y+PAD);
+
+    const x00 = this.x + this.w * 0.08;
+    const x10 = this.x + this.w * 0.92;
+
+    DrawLabel("Mic", x00, yc, 48, 32);
+    DrawLabel("Pinyin", x10, yc, 48, 32);
+
+    DrawLabel("Worker\nThread", x0, y1, 100, 40, g_tfjs_use_webworker == true);
+    DrawLabel("Main\nThread", x0, y2, 100, 40, g_tfjs_use_webworker == false);
+
+    DrawLabel("WebGL", x1, y1, 100, 32, g_tfjs_backend == "webgl");
+    DrawLabel("CPU", x1, y2, 100, 32, g_tfjs_backend == "cpu");
+
+    noStroke();
+    fill("black");
+    textAlign(LEFT, TOP);
+
+    fill("rgba(0,0,0," + this.GetAlpha() + ")");
+    text(this.info, this.x + PAD, this.y + this.h - (TEXT_SIZE+2)*3);
+
+    textAlign(RIGHT, BOTTOM);
+    fill("#999");
+    text((this.info_millis / 1000).toFixed(1), this.x + this.w - PAD, this.y + this.h - PAD);
+
+    pop();
+  }
+
+  Update(millis) {
+    this.info_millis -= millis;
+    if (this.info_millis < 0) {
+      this.info_millis = 0;
+    }
+    switch (this.anim) {
+      case "show":
+        this.y = lerp(this.y, this.y1, 1-pow(0.9, millis/15));
+        if (abs(this.y - this.y1) < 1) {
+          this.y = this.y1;
+          this.anim = undefined;
+        }
+        break;
+      case "hide":
+        this.y = lerp(this.y, this.y0, 1-pow(0.9, millis/15));
+        if (abs(this.y - this.y0) < 1) {
+          this.y = this.y0;
+          this.anim = undefined;
+          this.visible = false;
+        }
+        break;
+    }
+  }
+
+  GetAlpha() {
+    const THRESH = 750;
+    if (this.info_millis >= THRESH) { return 1; }
+    else return this.info_millis / THRESH;
+  }
+}
+
 var g_loudness_vis, g_fft_vis;
 var g_recording = false;
 //var g_rec_mfcc = [];
 //var graph_rec_mfcc;
 var graph_mfcc0, graph_diff;
 var g_moving_window_vis;
+var g_frameskip_vis;
+var g_runningmode_vis;
 
 var soundReady = true;
 
@@ -737,7 +904,9 @@ async function setup() {
   g_fft_vis = new FFTVis();
   g_moving_window_vis = new MovingWindowVis();
   g_moving_window_vis.x = 374;
-  g_moving_window_vis.y = 150;
+  g_moving_window_vis.y = 132;
+
+  g_frameskip_vis = new FrameskipVis();
 
   g_textarea = createElement("textarea", "");
   g_textarea.size(320, 50);
@@ -790,9 +959,11 @@ async function setup() {
   g_btn_load_model.pos.x = 280;
   g_btn_load_model.pos.y = 16;
   g_btn_load_model.clicked = async function() {
+    g_runningmode_vis.SetInfo("Attempt to load and initialize model with WebWorker");
     g_model = await LoadModel();
     g_btn_predict.is_enabled = true;
     g_btn_load_model.is_enabled = false;
+    g_runningmode_vis.Show();
   }
 
   g_btn_predict.w = 50;
@@ -896,25 +1067,51 @@ async function setup() {
   }
   g_buttons.push(btn_reset);
 
-  let btn_wgt_add = new Button("+");
-  btn_wgt_add.pos.x = 330;
-  btn_wgt_add.pos.y = 163;
-  btn_wgt_add.w = 32;
-  btn_wgt_add.h = 32;
-  btn_wgt_add.clicked = function() {
+  g_btn_wgt_add = new Button("+");
+  g_btn_wgt_add.pos.x = 406;
+  g_btn_wgt_add.pos.y = 174;
+  g_btn_wgt_add.w = 32;
+  g_btn_wgt_add.h = 24;
+  g_btn_wgt_add.clicked = function() {
     g_moving_window_vis.W0 *= 2;
   }
-  g_buttons.push(btn_wgt_add);
+  g_buttons.push(g_btn_wgt_add);
+  g_btn_wgt_add.is_enabled = false;
 
-  let btn_wgt_sub = new Button("-");
-  btn_wgt_sub.pos.x = 294;
-  btn_wgt_sub.pos.y = 163;
-  btn_wgt_sub.w = 32;
-  btn_wgt_sub.h = 32;
-  btn_wgt_sub.clicked = function() {
+  g_btn_wgt_sub = new Button("-");
+  g_btn_wgt_sub.pos.x = 374;
+  g_btn_wgt_sub.pos.y = 174;
+  g_btn_wgt_sub.w = 32;
+  g_btn_wgt_sub.h = 24;
+  g_btn_wgt_sub.clicked = function() {
     g_moving_window_vis.W0 /= 2;
   }
-  g_buttons.push(btn_wgt_sub);
+  g_buttons.push(g_btn_wgt_sub);
+  g_btn_wgt_sub.is_enabled = false;
+
+  g_btn_frameskip_add = new Button("+");
+  g_btn_frameskip_add.pos.x = 306;
+  g_btn_frameskip_add.pos.y = 174;
+  g_btn_frameskip_add.w = 32;
+  g_btn_frameskip_add.h = 24;
+  g_btn_frameskip_add.clicked = function() {
+    g_frameskip_vis.IncrementFrameskip();
+  }
+  g_buttons.push(g_btn_frameskip_add);
+  g_btn_frameskip_add.is_enabled = false;
+
+  g_btn_frameskip_sub = new Button("-");
+  g_btn_frameskip_sub.pos.x = 274;
+  g_btn_frameskip_sub.pos.y = 174;
+  g_btn_frameskip_sub.w = 32;
+  g_btn_frameskip_sub.h = 24;
+  g_btn_frameskip_sub.clicked = function() {
+    g_frameskip_vis.DecrementFrameskip();
+  }
+  g_buttons.push(g_btn_frameskip_sub);
+  g_btn_frameskip_sub.is_enabled = false;
+
+  g_runningmode_vis = new RunningModeVis();
 
   SetupReadAlong();
 }
@@ -954,6 +1151,7 @@ function draw() {
   g_recorderviz.Render();
   g_pathfinder_viz.Render();
   g_moving_window_vis.Render();
+  g_frameskip_vis.Render();
 
   const mx = g_pointer_x / g_scale, my = g_pointer_y / g_scale;
   noFill();
@@ -987,6 +1185,9 @@ function draw() {
   g_buttons.forEach((b) => {
     b.Render();
   })
+
+  g_runningmode_vis.Render();
+  g_runningmode_vis.Update(delta_ms);
 
   pop();
 

@@ -220,6 +220,7 @@ class Aligner {
       new Set([ "wang", "huang", "weng", "wen", "wan", "huan", "o", "fang", "hua" ]), 
       new Set([ "lei", "wei" ]),
       new Set([ "li", "ling" ]),
+      new Set([ "qiu", "qiong" ]),
     ];
       
     if (USE_FUZZY) {

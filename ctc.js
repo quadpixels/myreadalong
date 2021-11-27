@@ -144,9 +144,10 @@ class Beam {
   }
 };
 
-function Decode(probs, beam_size, blank) {
+function Decode(probs, beam_size, blank, frameskip=0) {
   const T = probs.length;
   const S = probs[0].length;
+
 
   // get log
   for (let i=0; i<T; i++) {
@@ -158,7 +159,7 @@ function Decode(probs, beam_size, blank) {
   let beam = new Beam();
   beam.AddEntry([], [0, NEG_INF]);
 
-  for (let t=0; t<T; t++) {
+  for (let t=0; t<T; t+=(1+frameskip)) {
     let next_beam = new Beam();
 
     let temp = [];

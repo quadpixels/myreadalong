@@ -95,6 +95,49 @@ async function CreateMyProcessor(ctx) {
   return myProcessor;
 }
 
+// Load model, not using web worker
+async function LoadModelNonWorker() {
+
+  // Clear status bits
+  g_tfjs_use_webworker = undefined;
+  g_tfjs_backend = undefined;
+  g_tfjs_version = undefined;
+
+  g_tfjs_version = "Initializing model in main thread";
+  console.log("Loading model");
+  const ms0 = millis();
+  const model = await tf.loadLayersModel("model/model.json");
+  const ms1 = millis();
+  console.log("Model loading took " + (ms1-ms0) + " ms")
+
+  g_runningmode_vis.SetInfo("Backend=" + tf.getBackend() + ", pre-heating ..", 2000);
+
+  const N = 400;
+  let tb = tf.buffer([1, N, 200, 1]);
+  await model.predictOnBatch(tb.toTensor());
+  const ms2 = millis();
+  console.log("Model preheat took " + (ms2-ms1) + " ms");
+
+  // Update Running Mode Viz
+  g_tfjs_backend = tf.getBackend();
+  g_tfjs_use_webworker = false;
+  g_tfjs_version = tf.version.tfjs + "(" + g_tfjs_backend + ")";
+
+  if (g_tfjs_backend == "webgl") {
+    g_runningmode_vis.SetInfo("WebGL backend initialized.", 2000);
+    setTimeout(() => {
+      g_runningmode_vis.Hide();
+    }, 2000)
+  } else {
+    g_runningmode_vis.SetInfo("No WebGL support.\nUser experience may be suboptimal.", 5000);
+    setTimeout(() => {
+      g_runningmode_vis.Hide();
+    }, 5000)
+  }
+
+  g_model = model;
+}
+
 // Load model
 async function LoadModel() {
   if (window.Worker) {
@@ -102,13 +145,38 @@ async function LoadModel() {
     g_worker = new Worker("myworker.js");
     g_worker.postMessage("Hey!");
     g_tfjs_version = "Initializing model in WebWorker";
+
     g_worker.onmessage = ((event) => {
       if (event.data.TfjsVersion) {
-        g_tfjs_version = event.data.TfjsVersion
+        g_tfjs_version = event.data.TfjsVersion;
+        g_tfjs_backend = event.data.TfjsBackend;
+        g_tfjs_use_webworker = true;
+
+        if (g_tfjs_backend == "cpu") {
+          g_runningmode_vis.SetInfo("Web worker does not appear to work with WebGL backend.\nAttempting to load model without WebWorker ..");
+          setTimeout(() => {
+            g_runningmode_vis.SetInfo("Loading model without using Webworker..");
+            LoadModelNonWorker();
+          }, 1000);
+        } else {
+          g_runningmode_vis.SetInfo("WebGL backend + Web worker initizlied.");
+          setTimeout(() => {
+            g_runningmode_vis.Hide();
+          }, 2000)
+        }
+
+      } else if (event.data.message) {
+        if (event.data.message == "preheat_done") {
+          console.log("preheat done");
+        }
       } else {
         OnPredictionResult(event);
       }
     });
+    g_btn_wgt_add.is_enabled = true;
+    g_btn_wgt_sub.is_enabled = true;
+    g_btn_frameskip_add.is_enabled = true;
+    g_btn_frameskip_sub.is_enabled = true;
   } else {
     g_tfjs_version = "Initializing model in main thread";
     console.log("Loading model");
