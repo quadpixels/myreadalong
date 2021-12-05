@@ -145,6 +145,7 @@ class Beam {
 };
 
 function Decode(probs, beam_size, blank, frameskip=0) {
+  if (probs == undefined) return;
   const T = probs.length;
   const S = probs[0].length;
 

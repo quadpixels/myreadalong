@@ -8,9 +8,13 @@ function SetupMicrophoneInput(bufferSize) {
   }
 
   // Q: Cannot change sample rate in Firefox
-  let context = new AudioContext({ sampleRate:44100 });
+  let context = new AudioContext();
   g_audio_context = context;
   g_pathfinder_viz.result = g_audio_context.sampleRate + " Hz"
+  g_worker.postMessage({
+    tag: "sampleRate",
+    sampleRate: g_audio_context.sampleRate
+  })
 
   var errorCallback = function errorCallback(err) {
     g_pathfinder_viz.result = err
@@ -26,15 +30,20 @@ function SetupMicrophoneInput(bufferSize) {
     };
     var successCallback = async function successCallback(mediaStream) {
       window.mediaStream = mediaStream;
+
+      // 在Firefox中，可能会遇到这个问题：
+      // Uncaught (in promise) DOMException: AudioContext.createMediaStreamSource: \
+      // Connecting AudioNodes from AudioContexts with different sample-rate is \
+      // currently not supported.
+
       var source = context.createMediaStreamSource(window.mediaStream);
       let m = await context.audioWorklet.addModule('myprocessor.js');
-      let processor = await CreateMyProcessor(context);
+      let processor = await CreateMyProcessor(context, { processorOptions: {sampleRate: g_audio_context.sampleRate} });
       g_my_processor = processor;
       source.connect(processor);
     };
 
     try {
-      g_
       navigator.getUserMedia(constraints, successCallback, errorCallback);
     } catch (e) {
       var p = navigator.mediaDevices.getUserMedia(constraints);
@@ -63,8 +72,8 @@ async function CreateAudioInput(the_file) {
 };
 
 // Create my processor & bind events
-async function CreateMyProcessor(ctx) {
-  const myProcessor = new AudioWorkletNode(ctx, 'myprocessor');
+async function CreateMyProcessor(ctx, options) {
+  const myProcessor = new AudioWorkletNode(ctx, 'myprocessor', options);
   // port: https://stackoverflow.com/questions/62702721/how-to-get-microphone-volume-using-audioworklet
   myProcessor.port.onmessage = ((event) => {
     const ms = millis();
@@ -125,20 +134,17 @@ async function LoadModelNonWorker() {
 
   if (g_tfjs_backend == "webgl") {
     g_runningmode_vis.SetInfo("WebGL backend initialized.", 2000);
-    setTimeout(() => {
-      g_runningmode_vis.Hide();
-    }, 2000)
   } else {
     g_runningmode_vis.SetInfo("No WebGL support.\nUser experience may be suboptimal.", 5000);
-    setTimeout(() => {
-      g_runningmode_vis.Hide();
-    }, 5000)
   }
 
   g_model = model;
 }
 
 // Load model
+// 偏好顺序：
+// 1) Web Worker 里的 WebGL后端
+// 2) 主线程里的 WebGL后端
 async function LoadModel() {
   if (window.Worker) {
     console.log("Web worker support detected.");
@@ -153,16 +159,21 @@ async function LoadModel() {
         g_tfjs_use_webworker = true;
 
         if (g_tfjs_backend == "cpu") {
+          g_tfjs_use_webworker = false;
           g_runningmode_vis.SetInfo("Web worker does not appear to work with WebGL backend.\nAttempting to load model without WebWorker ..");
           setTimeout(() => {
+            g_worker.postMessage({
+              "tag": "dispose",
+            });
             g_runningmode_vis.SetInfo("Loading model without using Webworker..");
             LoadModelNonWorker();
           }, 1000);
         } else {
-          g_runningmode_vis.SetInfo("WebGL backend + Web worker initizlied.");
-          setTimeout(() => {
-            g_runningmode_vis.Hide();
-          }, 2000)
+          console.log("WebGL backend enabled for Web Worker, initializing model.")
+          g_runningmode_vis.SetInfo("WebGL backend enabled for Web Worker, initializing model.");
+          g_worker.postMessage({
+            "tag": "LoadModel"
+          })
         }
 
       } else if (event.data.message) {
