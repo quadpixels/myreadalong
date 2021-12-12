@@ -21,7 +21,8 @@ async function LoadModel() {
 
   postMessage({
     "TfjsVersion": "tfjs " + tf.version.tfjs + "(" + tf.getBackend() + ") [WebWorker]",
-    "TfjsBackend": tf.getBackend()
+    "TfjsBackend": tf.getBackend(),
+    "Loaded": true
   });
 
   g_model = model;
@@ -123,6 +124,7 @@ onmessage = async function(event) {
     let temp0array = event.data.temp0array;
     const ms0 = millis();
     let blah = Decode(temp0array, 5, S-1, g_frameskip);
+    if (blah == undefined) return;
     let out = ""
     blah[0].forEach((x) => {
       out = out + PINYIN_LIST[x] + " "

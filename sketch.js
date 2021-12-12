@@ -7,7 +7,9 @@ const COLOR_FFTBARS = "rgba(238,162,164,1)" // 牡丹粉红
 const FRAMERATE_NORMAL = 30;
 const FRAMERATE_RECORDING = 10;
 
-var g_audio_context;
+var g_animator;
+
+var g_audio_context, g_media_stream;
 var normalized = [];
 var amplitudeSpectrum;
 var g_buffer = [];
@@ -18,8 +20,18 @@ let g_tfjs_backend = undefined;
 let g_tfjs_use_webworker = undefined;
 var g_hovered_button = undefined;
 
-const STATUS_Y = 78;
+// UI元素的位置
+const STATS4NERDS_POS = [ 1, -220 ];
+const RUNNINGMODEVIS_POS = [ 10, 70 ];
+
+// 是否只有按住REC时才录音
+// true：按下时才录音
+// false：无论何时都录音，但是只有按下时会加入识别队列
+var g_push_to_talk = true;
+
+const STATUS_Y = 98;
 // Audio processor
+var g_audio_source;
 var g_my_processor;
 
 const W0 = 480, H0 = 854;
@@ -90,6 +102,7 @@ class MyStuff {
   }
 
   Render() {
+    if (this.is_hidden == true) return;
     this.Push();
     this.do_Render();
     if (this.children != undefined) {
@@ -108,13 +121,22 @@ class MyStuff {
       
     }
   }
+
+  IsHidden() {
+    if (this.is_hidden == true) return true;
+    else {
+      const p = this.parent;
+      if (p == undefined) return false;
+      else return p.IsHidden();
+    }
+  }
 }
 
 class FFTVis extends MyStuff {
   constructor() {
     super();
     this.nshown = 200;
-    this.x = 210;
+    this.x = 200;
     this.y = STATUS_Y;
     this.w = 256;
     this.h = 13;
@@ -197,7 +219,7 @@ class AudioStatsViz extends MyStuff {
     this.window_audiosample = new SlidingWindow();
     this.samp_per_sec = 0;
     this.cb_per_sec   = 0;
-    this.x = 16;
+    this.x = 8;
     this.y = STATUS_Y;
     this.last_ms = 0;
     this.w = 64;
@@ -295,6 +317,7 @@ class RecorderViz extends MyStuff {
     this.buffer = [];
     this.start_record_ms = millis();
     this.window_offset = 0;
+    g_audio_context.resume();
     frameRate(FRAMERATE_RECORDING);
   }
 
@@ -337,60 +360,29 @@ class RecorderViz extends MyStuff {
   }
 
   StopRecording() {
+    g_audio_context.suspend();
     this.is_recording = false;
     this.duration_ms = millis() - this.start_record_ms;
     frameRate(FRAMERATE_NORMAL);
   }
 
+  ShouldAddFFT() {
+    if (g_push_to_talk)
+      return true;
+    else {
+      return this.is_recording;
+    }
+  }
+
   AddSpectrumIfRecording(fft) {
-    if (!this.is_recording) return;
+    if (!this.ShouldAddFFT()) {
+      return;
+    }
     this.RenderOneLineOfFFT(fft, this.buffer.length);
     this.buffer.push(fft);
   }
 
-  async do_Render() {
-    push();
-    noStroke();
-    
-    textAlign(LEFT, TOP);
-
-    let dx = 0;
-    let txt = "" + this.buffer.length + " | " + 
-      (this.duration_ms / 1000).toFixed(1) + "s |";
-
-    fill(122);
-
-    txt = txt + " | Window:[" + this.window_offset + "," + 
-          (this.window_offset + this.window_width) + "] |"
-
-    dx = textWidth(txt) + 3;
-
-    text(txt, 0, 0);
-
-    if (!this.is_recording) {
-      fill(122);
-      text("Not recording", dx, 0);
-    } else {
-      fill("#F88");
-      this.duration_ms = millis() - this.start_record_ms;
-      text("Recording", dx, 0);
-    }
-
-    noFill();
-    stroke(32);
-    const h = this.graph.height;
-    let dy = 15;
-    const w = this.buffer.length;
-    image(this.graph, 0, dy);
-    noFill();
-    stroke("#33f");
-    const dx1 = this.window_offset;
-    rect(dx1, dy, this.window_width, h);
-    stroke(32);
-    rect(0, dy, w, h);
-
-    pop();
-
+  async DoPrediction() {
     // 每次画图的时候进行预测或者提交预测请求
     if (this.window_width + this.window_offset <= this.buffer.length) {
       let ffts = this.buffer.slice(this.window_offset, 
@@ -435,6 +427,59 @@ class RecorderViz extends MyStuff {
       this.window_offset += this.window_delta;
     }
   }
+
+  async do_Render() {
+    push();
+    noStroke();
+    
+    textAlign(LEFT, TOP);
+
+    let dx = 0;
+    let txt = "" + this.buffer.length + " | " + 
+      (this.duration_ms / 1000).toFixed(1) + "s |";
+
+    fill(122);
+
+    txt = txt + " | Window:[" + this.window_offset + "," + 
+          (this.window_offset + this.window_width) + "] |"
+
+    dx = textWidth(txt) + 3;
+
+    text(txt, 0, 0);
+
+    if (!this.is_recording) {
+      fill(122);
+      text("Not recording", dx, 0);
+    } else {
+      fill("#F88");
+      this.duration_ms = millis() - this.start_record_ms;
+      text("Recording", dx, 0);
+    }
+
+    noFill();
+    stroke(32);
+    const h = this.graph.height;
+    let dy = 15;
+    const w = this.buffer.length;
+    const w1 = w + this.window_width;
+
+    if (w1 > W0) {
+      scale(W0/w1, 1);
+    }
+
+    image(this.graph, 0, dy);
+    noFill();
+    stroke("#33f");
+    const dx1 = this.window_offset;
+    rect(dx1, dy, this.window_width, h);
+    stroke(32);
+    rect(0, dy, w, h);
+
+    pop();
+
+    // 在绘图完成时，进行预测
+    this.DoPrediction();
+  }
 }
 
 class Button extends MyStuff {
@@ -450,6 +495,7 @@ class Button extends MyStuff {
     this.clicked = function() {}
     this.released = function() {}
     this.txt = txt;
+    this.border_style = 1;
   }
   do_Render() {
     if (!this.is_enabled) {
@@ -486,7 +532,13 @@ class Button extends MyStuff {
       line(0, 0, w, h); line(w, 0, 0, h);
     }
 
-    rect(0, 0, w, h);
+    //rect(0, 0, w, h);
+    if (this.border_style == 1) {
+      DrawBorderStyle1(0, 0, w, h);
+    } else {
+      DrawBorderStyle2(0, 0, w, h);
+    }
+
     fill(c);
     textSize(Math.max(14, h / 3));
     textAlign(CENTER, CENTER);
@@ -495,6 +547,9 @@ class Button extends MyStuff {
     pop();
   }
   Hover(mx, my) {
+    if (this.IsHidden()) {
+      this.is_hovered = false;
+    }
     mx = mx - g_ui_translate_x;
     my = my - g_ui_translate_y;
     if (!this.is_enabled) return;
@@ -525,7 +580,7 @@ class PathfinderViz extends MyStuff {
   constructor() {
     super();
     this.x = 16;
-    this.y = 10;
+    this.y = 30;
 
     this.py2idx = {};
 
@@ -662,7 +717,7 @@ class FrameskipVis extends MyStuff {
     super();
     this.frameskip = 0;
     this.x = 274;
-    this.y = 2;
+    this.y = 22;
   }
 
   ChangeFrameskip(delta) {
@@ -713,28 +768,57 @@ function DrawLabel(label, x, y, w, h, highlighted = false) {
 class Stats4Nerds extends MyStuff {
   constructor() {
     super();
-    this.x = 1;
-    this.y = 78;
+    
+    this.x = STATS4NERDS_POS[0];
+    this.y = STATS4NERDS_POS[1];
     this.w = 476;
-    this.h = 150;
+    this.h = 170;
+    this.is_hidden = false;
   }
   do_Render() {
     fill("rgba(255,255,255,0.95)");
     stroke(32);
-    rect(0, 0, this.w, this.h);
+    DrawBorderStyle2(0, 0, this.w, this.h);
   }
+
+  Hide() {
+    const Y0 = -220, Y1 = 70;
+    g_btn_statsfornerds.is_enabled = false;
+    g_animator.Animate(this, "y", undefined, [Y1, Y0], [0, 300], ()=>{
+      this.y = Y0;
+      this.is_hiden = true;
+      g_btn_statsfornerds.is_enabled = true;
+    });
+  }
+
+  Show() {
+    const Y0 = -220, Y1 = 70;
+    this.is_hidden = false;
+    g_btn_statsfornerds.is_enabled = false;
+    g_animator.Animate(this, "y", undefined, [Y0, Y1], [0, 300], ()=>{
+      this.y = Y1;
+      this.is_hiden = false;
+      g_btn_statsfornerds.is_enabled = true;
+    });
+  }
+
   Toggle() {
-    if (this.y == 78) this.y = -220;
-    else this.y = 78;
+    g_animator.FinishAllPendingAnimations();
+    const Y0 = -220, Y1 = 70;
+    if (this.y == Y1) {
+      this.Hide();
+    } else {
+      this.Show();
+    }
   }
 }
 class RunningModeVis extends MyStuff {
   constructor() {
     super();
-    this.x = 10;
+    this.x = RUNNINGMODEVIS_POS[0];
+    this.y = RUNNINGMODEVIS_POS[1];
     this.w = 460;
     this.h = 100;
-    this.y = 70;
     this.info = "";
     this.info_millis = 0;
 
@@ -984,7 +1068,7 @@ async function setup() {
   g_fft_vis.SetParent(g_stats4nerds);
   g_moving_window_vis = new MovingWindowVis();
   g_moving_window_vis.x = 374;
-  g_moving_window_vis.y = 2;
+  g_moving_window_vis.y = 22;
   g_moving_window_vis.SetParent(g_stats4nerds);
 
   g_frameskip_vis = new FrameskipVis();
@@ -995,7 +1079,7 @@ async function setup() {
   g_textarea.position(32, STATUS_Y + 100)
   g_textarea.hide();
 
-  g_downsp_audio_stats_viz.x = 110;
+  g_downsp_audio_stats_viz.x = 102;
 
   // REC button
   g_btn_rec = new Button("REC");
@@ -1164,6 +1248,7 @@ async function setup() {
   g_btn_wgt_add.y = 42;
   g_btn_wgt_add.w = 32;
   g_btn_wgt_add.h = 24;
+  g_btn_wgt_add.border_style = 2;
   g_btn_wgt_add.clicked = function() {
     g_moving_window_vis.W0 *= 2;
   }
@@ -1175,6 +1260,7 @@ async function setup() {
   g_btn_wgt_sub.y = 42;
   g_btn_wgt_sub.w = 32;
   g_btn_wgt_sub.h = 24;
+  g_btn_wgt_sub.border_style = 2;
   g_btn_wgt_sub.clicked = function() {
     g_moving_window_vis.W0 /= 2;
   }
@@ -1186,6 +1272,7 @@ async function setup() {
   g_btn_frameskip_add.y = 42;
   g_btn_frameskip_add.w = 32;
   g_btn_frameskip_add.h = 24;
+  g_btn_frameskip_add.border_style = 2;
   g_btn_frameskip_add.clicked = function() {
     g_frameskip_vis.IncrementFrameskip();
   }
@@ -1197,6 +1284,7 @@ async function setup() {
   g_btn_frameskip_sub.y = 42;
   g_btn_frameskip_sub.w = 32;
   g_btn_frameskip_sub.h = 24;
+  g_btn_frameskip_sub.border_style = 2;
   g_btn_frameskip_sub.clicked = function() {
     g_frameskip_vis.DecrementFrameskip();
   }
@@ -1205,7 +1293,17 @@ async function setup() {
 
   g_runningmode_vis = new RunningModeVis();
 
+  g_animator = new Animator()
+
   SetupReadAlong();
+
+  setTimeout(() => {
+    g_btn_statsfornerds.clicked();
+  }, 5);
+
+  setTimeout(() => {
+    g_btn_load_model.clicked();
+  }, 1000);
 }
 
 function draw() {
@@ -1218,6 +1316,7 @@ function draw() {
     g_pathfinder_viz.SetParent(g_stats4nerds);
   } else {
     delta_ms = (ms - g_last_draw_ms);
+    g_animator.Update(delta_ms);
   }
 
   background(255);
@@ -1253,16 +1352,17 @@ function draw() {
   noStroke();
   if (soundReady) { }
 
+  // 触摸单独在这里另外处理
+  g_buttons.forEach((b) => {
+    b.Render();
+  })
+
   g_recorderviz.Render();
   
   g_stats4nerds.Render();
 
   // ====================================================================
 
-  // 触摸单独在这里另外处理
-  g_buttons.forEach((b) => {
-    b.Render();
-  })
   g_runningmode_vis.Update(delta_ms);
 
   // crosshair

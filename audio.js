@@ -29,18 +29,22 @@ function SetupMicrophoneInput(bufferSize) {
       audio: true
     };
     var successCallback = async function successCallback(mediaStream) {
-      window.mediaStream = mediaStream;
+      g_media_stream = mediaStream;
 
       // 在Firefox中，可能会遇到这个问题：
       // Uncaught (in promise) DOMException: AudioContext.createMediaStreamSource: \
       // Connecting AudioNodes from AudioContexts with different sample-rate is \
       // currently not supported.
 
-      var source = context.createMediaStreamSource(window.mediaStream);
+      var source = context.createMediaStreamSource(g_media_stream);
       let m = await context.audioWorklet.addModule('myprocessor.js');
       let processor = await CreateMyProcessor(context, { processorOptions: {sampleRate: g_audio_context.sampleRate} });
       g_my_processor = processor;
-      source.connect(processor);
+      g_audio_source = source;
+      g_audio_source.connect(g_my_processor);
+      if (g_push_to_talk) {
+        g_audio_context.suspend();
+      }
     };
 
     try {
@@ -138,6 +142,15 @@ async function LoadModelNonWorker() {
     g_runningmode_vis.SetInfo("No WebGL support.\nUser experience may be suboptimal.", 5000);
   }
 
+
+  // 假定这时已经装入webgl后端了
+  if (g_btn_mic.is_enabled == true) {
+    g_btn_mic.clicked();
+    setTimeout(() => {
+      g_stats4nerds.Hide();
+    }, 1000);
+  }
+  
   g_model = model;
 }
 
@@ -168,12 +181,20 @@ async function LoadModel() {
             g_runningmode_vis.SetInfo("Loading model without using Webworker..");
             LoadModelNonWorker();
           }, 1000);
-        } else {
+        } else if (event.data.Loaded == undefined) {
           console.log("WebGL backend enabled for Web Worker, initializing model.")
           g_runningmode_vis.SetInfo("WebGL backend enabled for Web Worker, initializing model.");
           g_worker.postMessage({
             "tag": "LoadModel"
           })
+        } else if (g_tfjs_backend == "webgl") {
+          // 同时按下“Mic”按钮
+          if (g_btn_mic.is_enabled == true) {
+            g_btn_mic.clicked();
+            setTimeout(() => {
+              g_stats4nerds.Hide();
+            }, 1000);
+          }
         }
 
       } else if (event.data.message) {
