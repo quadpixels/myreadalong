@@ -26,7 +26,7 @@ function TouchOrMouseStarted(event) {
       const mx = g_pointer_x / g_scale, my = g_pointer_y / g_scale;
       //g_pathfinder_viz.result = "TouchStarted " + mx + " " + my;
       g_buttons.forEach((b) => { // TODO: 为什么需要在这里再加一下
-        b.Hover(mx, my);
+        b.do_Hover(mx, my);
         if (b.is_hovered) {
           b.OnPressed();
         }

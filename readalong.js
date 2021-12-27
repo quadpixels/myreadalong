@@ -2,7 +2,7 @@ const PROBE_RANGE0 = 4, PROBE_INCREMENT0 = 2;
 
 class Aligner {
   constructor() {
-    this.w = 478; this.h = 480;
+    this.w = 478; this.h = 640;
     this.Reset();
     this.text_size = 28;
   }
@@ -18,7 +18,9 @@ class Aligner {
     
     if (data.length > 0) {
       for (let i=0; i<data.length; i++) {
-        data[i][1] = data[i][1].split(" ");
+        if (data[i][1] != undefined) {
+          data[i][1] = data[i][1].split(" ");
+        }
       }
     }
     OnUpdateWeightMask();
@@ -54,6 +56,7 @@ class Aligner {
   GetNextPinyins(n) {
     let ret = [];
     let l = this.line_idx, c = this.char_idx;
+    if (l >= this.data.length) return undefined;
     for (let i=0; i<n; i++) {
       ret.push(this.data[l][1][c]);
       c++;
@@ -68,13 +71,6 @@ class Aligner {
   Render() {
     push();
     noStroke();
-    fill(COLOR0);
-    //rect(g_readalong_x, g_readalong_y, this.w, this.h);
-    textAlign(RIGHT, TOP);
-    textSize(20);
-    text("第" + (1+g_data_idx) + "/" + DATA.length + "篇\n" + g_aligner.title,
-      480, g_readalong_y);
-
 
     fill(0);
     
@@ -85,6 +81,12 @@ class Aligner {
     
     const translate_y = -this.GetPanY();
     const margin = 64;
+
+    // 高亮当前行
+    const hl_y = g_readalong_y + translate_y + TEXT_SIZE*1.2 * this.line_idx;
+    const hl_x = g_readalong_x;
+    fill(220);
+    rect(hl_x, hl_y, this.w, TEXT_SIZE*1.2);
 
     let y = g_readalong_y + translate_y, x = g_readalong_x;
     for (let i=0; i<this.data.length; i++) {
@@ -119,7 +121,7 @@ class Aligner {
         
         let alpha = 255, c0, c;
         if (y < g_readalong_y) {
-          alpha =map(y, g_readalong_y, g_readalong_y-margin, 255, 16);
+          alpha = map(y, g_readalong_y, g_readalong_y-margin, 255, 16);
         } else if (y > g_readalong_y + this.h) {
           alpha = map(y, g_readalong_y + this.h, g_readalong_y + this.h + margin,
             255, 16);
@@ -147,6 +149,29 @@ class Aligner {
       
       y += TEXT_SIZE*1.2;
     }
+
+    textSize(20);
+    const dy = g_readalong_title_y;
+    let t = "第" + (1+g_data_idx) + "/" + DATA.length + "篇 " + g_aligner.title
+    const sp = t.split("\n");
+    let tw = 12;
+    sp.forEach((line) => {
+      tw = max(tw, textWidth(line)+20);
+    })
+    let nlines = sp.length
+    
+    
+    let th = nlines * 23 + 3;
+    stroke(32);
+    fill("rgba(255,255,255,0.9)")
+    DrawBorderStyle1(240-tw/2, dy, tw, th);
+
+    noStroke();
+    fill(COLOR0);
+    //rect(g_readalong_x, g_readalong_y, this.w, this.h);
+    textAlign(CENTER, TOP);
+    text(t, 240, dy+2);
+
     pop();
   }
   
@@ -268,7 +293,7 @@ class Aligner {
     let PROBE_RANGE = PROBE_RANGE0, PROBE_INCREMENT = PROBE_INCREMENT0;
     let pidx = this.pinyin_idx, lidx = this.line_idx;
     let nidx = 0;
-    let found = -1;
+    let found = -1, found_char = "";
     for (let i=0; i<PROBE_RANGE; i++) {
       
       if (lidx >= this.data.length) return;
@@ -281,6 +306,7 @@ class Aligner {
         if (np == py) {
           found = j;
           this_found = true;
+          found_char = this.data[lidx][0][pidx];
           PROBE_RANGE += PROBE_INCREMENT;
           break;
         }
@@ -300,7 +326,7 @@ class Aligner {
     }
     
     if (found != -1) {
-      console.log("found=" + found + ", newpinyin=" + newpys);
+      console.log("found=" + found + " (" + found_char + "), newpinyin=" + newpys);
       return found;
     }
      
@@ -426,9 +452,10 @@ function ModifyDataIdx(delta) {
 }
 
 let g_message = "";
-
-let g_readalong_x = 4, g_readalong_y = 74;
+let g_readalong_x = 4, g_readalong_y = 62;
 let g_readalong_w = 472, g_readalong_h = 480 - g_readalong_y;
+let g_readalong_title_y = 3;
+
 function RenderReadAlong(deltaTime) {
   // Fade lights
   let victims = [];
