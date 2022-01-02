@@ -307,7 +307,7 @@ class RecorderViz extends MyStuff {
     this.px_per_samp = 1;  // 1 sample = 1 px
 
     this.window_offset = 0;
-    this.window_delta = 50;
+    this.window_delta = 25;
     this.window_width = 100;
 
     this.recog_status = [];
