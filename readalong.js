@@ -83,12 +83,18 @@ class Aligner {
     const margin = 64;
 
     // 高亮当前行
-    const hl_y = g_readalong_y + translate_y + TEXT_SIZE*1.2 * this.line_idx;
-    const hl_x = g_readalong_x;
+    const ly = g_readalong_layout.y, lh = g_readalong_layout.h;
+    let hl_y0 = ly + translate_y + TEXT_SIZE*1.2 * this.line_idx;
+    let hl_y1 = hl_y0 + TEXT_SIZE * 1.2;
+    hl_y0 = min(hl_y0, ly+lh); hl_y1 = min(hl_y1, ly+lh);
+    hl_y0 = max(hl_y0, ly)   ; hl_y1 = max(hl_y1, ly);
+    let hl_x = g_readalong_layout.x;
     fill(220);
-    rect(hl_x, hl_y, this.w, TEXT_SIZE*1.2);
+    if (hl_y1 > ly && hl_y0 < lh+ly) {
+      rect(hl_x, hl_y0, this.w, hl_y1-hl_y0);
+    }
 
-    let y = g_readalong_y + translate_y, x = g_readalong_x;
+    let y = g_readalong_layout.y + translate_y, x = g_readalong_layout.x;
     for (let i=0; i<this.data.length; i++) {
       const line = this.data[i][0];
       
@@ -120,15 +126,14 @@ class Aligner {
         }
         
         let alpha = 255, c0, c;
-        if (y < g_readalong_y) {
-          alpha = map(y, g_readalong_y, g_readalong_y-margin, 255, 16);
-        } else if (y > g_readalong_y + this.h) {
-          alpha = map(y, g_readalong_y + this.h, g_readalong_y + this.h + margin,
-            255, 16);
+        const ly = g_readalong_layout.y, lh = g_readalong_layout.h;
+        const y1_disappear = ly+lh-TEXT_SIZE*1.2;
+        if (y < ly+margin) {
+          alpha = map(y, ly+margin, ly, 255, 0);
+        } else if (y > y1_disappear-margin) {
+          alpha = map(y, y1_disappear-margin, y1_disappear,
+            255, 0);
         }
-
-        // 要是超出视野的话就用最低alpha值
-        alpha = constrain(alpha, 16, 255);
 
         c0 = color(128, 128, 128, alpha), c = c0;
         if (done) {
@@ -151,7 +156,7 @@ class Aligner {
     }
 
     textSize(20);
-    const dy = g_readalong_title_y;
+    const dy = g_readalong_layout.title_y;
     let t = "第" + (1+g_data_idx) + "/" + DATA.length + "篇 " + g_aligner.title
     const sp = t.split("\n");
     let tw = 12;
@@ -168,7 +173,7 @@ class Aligner {
 
     noStroke();
     fill(COLOR0);
-    //rect(g_readalong_x, g_readalong_y, this.w, this.h);
+    //rect(g_readalong_layout.x, g_readalong_layout.y, this.w, this.h);
     textAlign(CENTER, TOP);
     text(t, 240, dy+2);
 
@@ -385,8 +390,8 @@ class Aligner {
   }
 
   Hover(mx, my) {
-    if (mx >= g_readalong_x && mx <= g_readalong_x + g_readalong_w &&
-        my >= g_readalong_y && my <= g_readalong_y + g_readalong_h) {
+    if (mx >= g_readalong_layout.x && mx <= g_readalong_layout.x + g_readalong_layout.w &&
+        my >= g_readalong_layout.y && my <= g_readalong_layout.y + g_readalong_layout.h) {
       this.is_hovered = true;
     }
   }
@@ -414,11 +419,68 @@ class Aligner {
       return this.pan_y;
     }
   }
+
+  Update(ms, override_k = undefined) {
+    // 聚焦到当前行
+    if (this.is_dragging) return;
+
+    const MARGIN = 64;
+
+    // 是否超限？
+    const tot_h = this.text_size * this.data.length * 1.2;
+    const overshoot = tot_h - (g_readalong_layout.h - MARGIN*2);
+    let y;
+
+    if (overshoot > 0 && this.data.length > 0) {
+      y = -MARGIN + lerp(0, overshoot, this.line_idx / (this.data.length-1));
+    } else {
+      y = -MARGIN;
+    }
+
+    let k;
+    if (override_k != undefined) {
+      k = override_k;
+    } else {
+      k = Math.pow(0.95, ms/16);
+    }
+    this.pan_y = lerp(y, this.pan_y, k);
+  }
+}
+
+// 根据【拼图模式】激活与否，调整该View的大小
+class ReadAlongLayout {
+  constructor() {
+    this.SetFullHeight();
+  }
+
+  SetHalfHeight() {
+    this.title_y = 440;
+    this.x = 4;
+    this.y = 500;
+    this.h = 732 - this.y;
+  }
+
+  SetFullHeight() {
+    this.title_y = 3;
+    this.y = 62;
+    this.x = 4;
+    this.w = 470;
+    this.h = 732 - this.y;
+  }
+
+  SwitchMode() {
+    if (this.y == 62) {
+      this.SetHalfHeight();
+    } else {
+      this.SetFullHeight();
+    }
+  }
 }
 
 let g_aligner;
 function SetupReadAlong() {
   g_aligner = new Aligner();
+  g_readalong_layout = new ReadAlongLayout();
   LoadDataset(0);
 }
 
@@ -452,14 +514,12 @@ function ModifyDataIdx(delta) {
 }
 
 let g_message = "";
-let g_readalong_x = 4, g_readalong_y = 62;
-let g_readalong_w = 472, g_readalong_h = 480 - g_readalong_y;
 let g_readalong_title_y = 3;
 
-function RenderReadAlong(deltaTime) {
+function RenderReadAlong(delta_ms) {
   // Fade lights
   let victims = [];
-  const p = pow(0.96, deltaTime / 16);
+  const p = pow(0.96, delta_ms / 16);
   let keyz = Object.keys(g_highlights);
   keyz.forEach((k) => {
     g_highlights[k] *= p;
@@ -471,8 +531,14 @@ function RenderReadAlong(deltaTime) {
   
   textAlign(LEFT, TOP);
   text(g_message, 0, 18);
-  
+
+  g_aligner.Update(delta_ms);
   g_aligner.Render();
+  push();
+  noFill(); stroke(128);
+  const l = g_readalong_layout;
+  rect(l.x, l.y, l.w, l.h);
+  pop();
 }
 
 let g_highlights = {}

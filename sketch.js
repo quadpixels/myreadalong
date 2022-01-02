@@ -77,6 +77,7 @@ function OnWindowResize() {
 var g_btn_rec, g_btn_mic, g_btn_file, g_btn_demo_data;
 var g_btn_load_model, g_btn_predict;
 var g_btn_wgt_add, g_btn_wgt_sub, g_btn_frameskip_add, g_btn_frameskip_sub;
+var g_btn_puzzle_mode;
 
 function VerticalLayout() {
 
@@ -304,7 +305,7 @@ class RecorderViz extends MyStuff {
     this.px_per_samp = 1;  // 1 sample = 1 px
 
     this.window_offset = 0;
-    this.window_delta = 25;
+    this.window_delta = 50;
     this.window_width = 100;
 
     this.recog_status = [];
@@ -769,7 +770,7 @@ class PathfinderViz extends MyStuff {
 class MovingWindowVis extends MyStuff {
   constructor() {
     super()
-    this.W0 = 40;
+    this.W0 = 640;
     this.w = 80;
     this.h = 24;
     this.x = 0; this.y = 0;
@@ -791,7 +792,6 @@ class MovingWindowVis extends MyStuff {
       const y0 = map(this.weights[i], 1, 0, 0, this.h) + TEXT_SIZE;
       const y1 = this.h + TEXT_SIZE;
       rect(x0, y0, x1-x0, y1-y0);
-      //console.log(x0 + " " + x1 + " " + y0 + " " + y1)
     }
     pop();
   }
@@ -1391,6 +1391,17 @@ async function setup() {
   }
   g_btn_frameskip_sub.is_enabled = false;
   g_btn_frameskip_sub.SetParent(g_frameskip_vis);
+
+  g_btn_puzzle_mode = new Button("謎之\n模式");
+  g_btn_puzzle_mode.x = 420;
+  g_btn_puzzle_mode.y = 770;
+  g_btn_puzzle_mode.w = 50;
+  g_btn_puzzle_mode.h = 50;
+  g_btn_puzzle_mode.clicked = function() {
+    g_readalong_layout.SwitchMode();
+    g_aligner.Update(0, 0); // 跳过跟踪动画
+  }
+  g_buttons.push(g_btn_puzzle_mode);
 
   g_runningmode_vis = new RunningModeVis();
 
