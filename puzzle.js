@@ -385,8 +385,8 @@ class PuzzleDirector {
     if (!this.is_dragging) return;
     const deltax = mx - this.last_mx, deltay = my - this.last_my;
     this.last_mx = mx; this.last_my = my;
-    g_rot_inertia[0] -= deltax * 0.0001;
-    g_rot_inertia[1] += deltay * 0.0001;
+    g_rot_inertia[0] -= deltax * 0.0002;
+    g_rot_inertia[1] += deltay * 0.0002;
   }
 }
 
