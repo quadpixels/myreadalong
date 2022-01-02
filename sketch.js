@@ -21,7 +21,7 @@ let g_tfjs_use_webworker = undefined;
 var g_hovered_button = undefined;
 
 // UI元素的位置
-const STATS4NERDS_POS = [ -220, 60 ];
+const STATS4NERDS_POS = [ -220, 40 ];
 const RUNNINGMODEVIS_POS = [ 10, 70 ];
 
 // 是否只有按住REC时才录音
@@ -67,7 +67,9 @@ function OnWindowResize() {
       g_scale = 1;
     }
     
-    resizeCanvas(W, H);
+    if (prevW != W || prevH != H) {
+      resizeCanvas(W, H);
+    }
     
     prevW = W; prevH = H;
     g_dirty += 2;
@@ -1416,6 +1418,8 @@ async function setup() {
   setTimeout(() => {
     g_btn_load_model.clicked();
   }, 1000);
+
+  SetupPuzzle();
 }
 
 function draw() {
@@ -1435,6 +1439,9 @@ function draw() {
   textSize(12);
   push();
   scale(g_scale);
+
+  if (g_readalong_layout.ShouldDrawPuzzle())
+    DrawPuzzle();
 
   const mx = g_pointer_x / g_scale, my = g_pointer_y / g_scale;
   noFill();
@@ -1484,7 +1491,6 @@ function draw() {
   line(mx - l, my, mx + l, my);
   line(mx, my - l, mx, my + l);
 
-
   pop();
 
   push();
@@ -1493,8 +1499,8 @@ function draw() {
   textAlign(LEFT, TOP);
   text(parseInt(width) + "x" + parseInt(height) + "x" + g_scale.toFixed(2) + " " + windowWidth + "x" + windowHeight, 1, 1);
 
-  pop();  // end scale
 
+  pop();  // end scale
 
   g_frame_count ++;
   g_last_draw_ms = ms;

@@ -11,19 +11,36 @@ class Aligner {
     this.text_size = text_size;
     this.title = title;
     this.data = data.slice();
+    this.puzzle_events = [];
     this.line_idx = 0; // 第几行
+    this.prev_line_idx = 0;
     
     this.char_idx   = 0; // 第几个字，可能与拼音有出入 
     this.pinyin_idx = 0; // 第几个拼音
-    
+
+    console.log(this.data)
     if (data.length > 0) {
-      for (let i=0; i<data.length; i++) {
-        if (data[i][1] != undefined) {
-          data[i][1] = data[i][1].split(" ");
+      for (let i=0; i<this.data.length; i++) {
+        this.data[i][1] = this.data[i][1].slice(); // deep copy
+      }
+      for (let i=0; i<this.data.length; i++) {
+        if (typeof(this.data[i][1]) == "string") { // 为什么这个会持续
+          this.data[i][1] = this.data[i][1].split(" ");
         }
+        this.puzzle_events.push([]);
       }
     }
     OnUpdateWeightMask();
+  }
+
+
+  SpawnPuzzleEventLabels(num_steps) {
+
+    for (let i=0; i<num_steps; i++) {
+      const data_idx = parseInt(map(i+1, 0, num_steps, 0, this.data.length-1));
+      console.log(data_idx);
+      this.puzzle_events[data_idx].push("※");
+    }
   }
   
   static PUNCT = new Set(['，', '。', '；']);
@@ -80,7 +97,7 @@ class Aligner {
     textFont('KaiTi');
     
     const translate_y = -this.GetPanY();
-    const margin = 64;
+    const margin = 32;
 
     // 高亮当前行
     const ly = g_readalong_layout.y, lh = g_readalong_layout.h;
@@ -98,6 +115,17 @@ class Aligner {
     for (let i=0; i<this.data.length; i++) {
       const line = this.data[i][0];
       
+        
+      let alpha = 255, c0, c;
+      const ly = g_readalong_layout.y, lh = g_readalong_layout.h;
+      const y1_disappear = ly+lh-TEXT_SIZE*1.2;
+      if (y < ly+margin) {
+        alpha = map(y, ly+margin, ly, 255, 0);
+      } else if (y > y1_disappear-margin) {
+        alpha = map(y, y1_disappear-margin, y1_disappear,
+          255, 0);
+      }
+
       let dx = 0, pidx = 0; // 拼音idx
       for (let cidx = 0; cidx < line.length; cidx ++) {
         const ch = line[cidx];
@@ -124,16 +152,6 @@ class Aligner {
           }
           pidx ++;
         }
-        
-        let alpha = 255, c0, c;
-        const ly = g_readalong_layout.y, lh = g_readalong_layout.h;
-        const y1_disappear = ly+lh-TEXT_SIZE*1.2;
-        if (y < ly+margin) {
-          alpha = map(y, ly+margin, ly, 255, 0);
-        } else if (y > y1_disappear-margin) {
-          alpha = map(y, y1_disappear-margin, y1_disappear,
-            255, 0);
-        }
 
         c0 = color(128, 128, 128, alpha), c = c0;
         if (done) {
@@ -150,6 +168,15 @@ class Aligner {
           fill(c);
           text(ch, dx+x, y);
         }
+      }
+
+      const e = this.puzzle_events[i];
+      if (e.length > 0) {
+        fill(color(192,192,244,alpha));
+        this.puzzle_events[i].forEach((elt) => {
+          dx += textWidth(elt);
+          text(elt, dx+x, y);
+        })
       }
       
       y += TEXT_SIZE*1.2;
@@ -325,6 +352,16 @@ class Aligner {
       if (this_found) {
         this.pinyin_idx = pidx;
         this.char_idx = this.PinyinIdxToCharIdx(lidx, pidx);
+
+        if (this.line_idx != lidx) {
+          for (let i = this.line_idx ; i < lidx; i++) {
+            // 处理拼图事宜
+            this.puzzle_events[i].forEach((entry) => {
+              g_puzzle_director.NextStep();
+            });
+          }
+        }
+
         this.line_idx = lidx;
         OnUpdateWeightMask();
       }
@@ -340,6 +377,7 @@ class Aligner {
   
   Reset() {
     this.line_idx = 0;
+    this.prev_line_idx = 0;
     this.char_idx = 0;
     this.pinyin_idx = 0;
     this.pan_y = 0;
@@ -424,17 +462,18 @@ class Aligner {
     // 聚焦到当前行
     if (this.is_dragging) return;
 
-    const MARGIN = 64;
+    const MARGIN = 32;
+    const DISP_Y = -64;
 
     // 是否超限？
     const tot_h = this.text_size * this.data.length * 1.2;
-    const overshoot = tot_h - (g_readalong_layout.h - MARGIN*2);
+    const overshoot = tot_h - (g_readalong_layout.h - MARGIN*2 + DISP_Y);
     let y;
 
     if (overshoot > 0 && this.data.length > 0) {
-      y = -MARGIN + lerp(0, overshoot, this.line_idx / (this.data.length-1));
+      y = DISP_Y + lerp(0, overshoot, this.line_idx / (this.data.length-1));
     } else {
-      y = -MARGIN;
+      y = DISP_Y;
     }
 
     let k;
@@ -449,46 +488,66 @@ class Aligner {
 
 // 根据【拼图模式】激活与否，调整该View的大小
 class ReadAlongLayout {
+  static YCOORDS = [ 62, 500 ];
+
   constructor() {
     this.SetFullHeight();
   }
 
   SetHalfHeight() {
-    this.title_y = 440;
+    this.title_y = 3;
     this.x = 4;
-    this.y = 500;
+    this.y = ReadAlongLayout.YCOORDS[1];
     this.h = 732 - this.y;
   }
 
   SetFullHeight() {
     this.title_y = 3;
-    this.y = 62;
+    this.y = ReadAlongLayout.YCOORDS[0];
     this.x = 4;
     this.w = 470;
     this.h = 732 - this.y;
   }
 
   SwitchMode() {
-    if (this.y == 62) {
+    if (this.y == ReadAlongLayout.YCOORDS[0]) {
       this.SetHalfHeight();
     } else {
       this.SetFullHeight();
     }
   }
+
+  ShouldDrawPuzzle() {
+    if (this.y == ReadAlongLayout.YCOORDS[1]) {
+      return true;
+    } else {
+      return false;
+    }
+  }
+
+  IsHovered(mx, my) {
+    if (mx >= this.x && my >= this.y &&
+        mx <= this.x + this.w &&
+        my <= this.y + this.h) return true;
+    else return false;
+  }
 }
 
 let g_aligner;
+let g_data_idx = 2;
 function SetupReadAlong() {
   g_aligner = new Aligner();
   g_readalong_layout = new ReadAlongLayout();
-  LoadDataset(0);
+  LoadDataset(g_data_idx);
 }
 
-let g_data_idx = 0;
 function LoadDataset(idx) { 
   g_aligner.LoadData(DATA[idx], TITLES[idx], FONT_SIZES[idx]); 
+  g_aligner.SpawnPuzzleEventLabels(8);
   g_aligner.Reset();
+  //LoadPuzzleDataset("coffin4");  // TODO：加入其它的拼图
 }
+
 function LoadPrevDataset() {
   g_data_idx --; if (g_data_idx < 0) { g_data_idx = 0; }
   LoadDataset(g_data_idx); 
