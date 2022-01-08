@@ -81,8 +81,23 @@ var g_btn_load_model, g_btn_predict;
 var g_btn_wgt_add, g_btn_wgt_sub, g_btn_frameskip_add, g_btn_frameskip_sub;
 var g_btn_puzzle_mode;
 
-function VerticalLayout() {
-
+// 遍历所有按钮
+// 注意！包括不在 g_buttons 中的按钮
+function do_ForAllButtons(elt, callback) {
+  if (elt instanceof Button) {
+    callback(elt);
+  }
+  if (elt.children instanceof Array) {
+    elt.children.forEach((c) => {
+      do_ForAllButtons(c, callback);
+    })
+  }
+}
+function ForAllButtons(callback) {
+  g_buttons.forEach((b) => {
+    callback(b);
+  })
+  do_ForAllButtons(g_stats4nerds, callback);
 }
 
 var g_ui_translate_x = 0, g_ui_translate_y = 0;
@@ -468,6 +483,7 @@ class RecorderViz extends MyStuff {
   }
 
   async do_Render() {
+    const mx = g_pointer_x / g_scale, my = g_pointer_y / g_scale;
     push();
     noStroke();
     
@@ -539,6 +555,7 @@ class RecorderViz extends MyStuff {
     }
 
     if (this.draw_energy) {
+      
       let lx = 0, ly = dy + 20;
       const step = 4;
       for (let i=0; i<this.energy_readings.length; i += step) {
@@ -550,6 +567,11 @@ class RecorderViz extends MyStuff {
       }
       dy += 36;
     }
+
+    // 画出边框
+    noFill();
+    stroke(128);
+    rect(this.x, this.y, W0-this.x, dy);
 
     pop();
 
@@ -652,13 +674,14 @@ class Button extends MyStuff {
       this.is_hovered = false;
     }
   }
+  Unhover() {
+    this.is_hovered = false;
+  }
   OnPressed() {
     if (!this.is_enabled) return;
     if (!this.is_pressed) {
       this.is_pressed = true;
-      console.log("this.clicked");
       this.clicked();
-      console.trace();
     }
   }
   OnReleased() {
@@ -1453,7 +1476,7 @@ function draw() {
   let has_hovered_buttons = false;
   g_hovered_button = undefined;
 
-  g_buttons.forEach((b) => {
+  ForAllButtons((b) => {
     b.do_Hover(mx, my);
     if (b.is_hovered) {
       has_hovered_buttons = true;
@@ -1499,7 +1522,9 @@ function draw() {
   noStroke();
   fill(192);
   textAlign(LEFT, TOP);
-  text(parseInt(width) + "x" + parseInt(height) + "x" + g_scale.toFixed(2) + " " + windowWidth + "x" + windowHeight, 1, 1);
+  text(parseInt(width) + "x" + parseInt(height) + "x" + g_scale.toFixed(2) + "\n"
+     + windowWidth + "x" + windowHeight + "\n"
+     + g_touch_state, 1, 1);
 
 
   pop();  // end scale
@@ -1593,13 +1618,13 @@ function mousePressed(event) {
 
 function touchEnded(event) {
   TouchOrMouseEnded(event);
-  g_buttons.forEach((b) => {
+  ForAllButtons((b) => {
     b.OnReleased();
   });
 }
 function mouseReleased(event) {
   TouchOrMouseEnded(event);
-  g_buttons.forEach((b) => {
+  ForAllButtons((b) => {
     b.OnReleased();
   });
 }
