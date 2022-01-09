@@ -325,6 +325,7 @@ class RecorderViz extends MyStuff {
     this.window_offset = 0;
     this.window_delta = 25;
     this.window_width = 100;
+    this.num_windows_in_flight = 0; //有多少个窗口的数据需要识别
 
     this.recog_status = [];
     this.recog_decode_timestamps = [];
@@ -335,7 +336,6 @@ class RecorderViz extends MyStuff {
     this.draw_stat = false;  // 不写状态文字
     this.draw_fft = false;   // 不画FFT
     this.draw_energy = true; // 只画能量图
-
   }
 
   Clear() {
@@ -345,6 +345,7 @@ class RecorderViz extends MyStuff {
     this.recog_decode_timestamps = [];
     this.recog_decode_per_bin = [];
     this.duration_ms = 0;
+    this.num_windows_in_flight = 0;
     if (this.graph != undefined)
       this.graph.clear();
   }
@@ -352,16 +353,18 @@ class RecorderViz extends MyStuff {
   StartRecording() {
     this.graph.clear();
     this.is_recording = true;
-    this.buffer = [];
-    this.energy_readings = [];
-    this.recog_decode_timestamps = [];
-    this.recog_status = [];
-    this.recog_decode_per_bin = [];
+
+    this.Clear();
+
     this.start_record_ms = millis();
-    this.window_offset = 0;
+    this.window_offset = 0;  // 当前需要decode的窗偏移了几个FFT样本
     this.start_serial = this.serial;
     g_audio_context.resume();
     frameRate(FRAMERATE_RECORDING);
+
+    
+    // 将Aligner的开始点设为现在
+    g_aligner.OnStartRecording();
   }
 
   myMap(x) {
@@ -407,6 +410,10 @@ class RecorderViz extends MyStuff {
     this.is_recording = false;
     this.duration_ms = millis() - this.start_record_ms;
     frameRate(FRAMERATE_NORMAL);
+
+    if (this.IsAllDone()) {
+      g_aligner.OnStopRecording();
+    }
   }
 
   ShouldAddFFT() {
@@ -453,7 +460,7 @@ class RecorderViz extends MyStuff {
           const ms1 = millis();
 
           // 1:已经预测完了
-          this.recog_status.push([]);
+          this.recog_status.push(undefined);
 
           temp0array = []; // for ctc
           const T = temp0.shape[1];
@@ -484,6 +491,7 @@ class RecorderViz extends MyStuff {
         }
       }
       this.window_offset += this.window_delta;
+      this.num_windows_in_flight ++;
     }
   }
 
@@ -653,9 +661,6 @@ class RecorderViz extends MyStuff {
       this.recog_status[offset] = [decoded, timestamps];
     }
 
-    console.log(timestamps)
-    console.log(decoded);
-    console.log(offset);
     // 这一个预测输入 在这一轮录音中的开始时间戳
     offset = (serial - this.start_serial) * this.window_delta;
     timestamps.forEach((t) => {
@@ -670,6 +675,17 @@ class RecorderViz extends MyStuff {
       }
       this.recog_decode_per_bin[bin_index] ++;
     });
+
+    this.num_windows_in_flight --;
+
+    // 完成了所有堆积的工作，将录音按钮设为可用，并且如果现在没有按下，就把Aligner的这个批次终止
+    if (this.IsAllDone()) {
+      g_btn_rec.is_enabled = true;
+    }
+  }
+
+  IsAllDone() {
+    if (this.num_windows_in_flight <= 0) return true; else return false;
   }
 }
 
@@ -1178,8 +1194,13 @@ let g_buttons = [];
 function OnPredictionResult(res) {
   const d = res.data;
   g_pathfinder_viz.SetResult(d.Decoded, d.PredictionTime, d.DecodeTime);
-  OnNewPinyins(d.Decoded.split(" "));
+  //OnNewPinyins(d.Decoded.split(" "));
   g_recorderviz.OnDecodedAndAligned(d.serial, d.Decoded, d.decode_timestamp)
+  g_aligner.OnRecogStatus(g_recorderviz.recog_status);
+
+  if (this.is_recording == false) {
+    g_aligner.OnStopRecording();
+  }
 }
 
 // For moving window stuff
@@ -1295,6 +1316,9 @@ async function setup() {
   }
   g_btn_rec.released = function() {
     g_recorderviz.StopRecording();
+    if (!g_recorderviz.IsAllDone()) {
+      g_recorderviz.is_enabled = false;
+    }
   }
   g_buttons.push(g_btn_rec);
 
@@ -1671,9 +1695,7 @@ function keyPressed() {
     g_textarea.value(txt);
   }
   
-  {
-    ReadAlongKeyPressed(key, keyCode);
-  }
+  ReadAlongKeyPressed(key, keyCode);
 }
 
 function keyReleased() {

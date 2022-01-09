@@ -5,6 +5,14 @@ class Aligner {
     this.w = 478; this.h = 640;
     this.Reset();
     this.text_size = 28;
+
+    this.saved_pinyin_idx = undefined;
+    this.saved_line_idx = undefined;
+    this.saved_char_idx = undefined;
+
+    this.probe_lidx = undefined;
+    this.probe_pidx = undefined;
+    this.probe_cidx = undefined;
   }
   
   LoadData(data, title, text_size) {
@@ -32,6 +40,7 @@ class Aligner {
     }
     OnUpdateWeightMask();
   }
+
 
 
   SpawnPuzzleEventLabels(num_steps) {
@@ -85,6 +94,16 @@ class Aligner {
     return ret;
   }
 
+  CompareLineAndCharIdxes(line_idx0, char_idx0, line_idx1, char_idx1) {
+    if (line_idx0 < line_idx1) return -1;
+    else if (line_idx0 > line_idx1) return 1;
+    else {
+      if (char_idx0 < char_idx1) return -1;
+      else if (char_idx0 == char_idx1) return 0;
+      else return 1;
+    }
+  }
+
   Render() {
     push();
     noStroke();
@@ -131,12 +150,28 @@ class Aligner {
         const ch = line[cidx];
         
         // Is done?
-        let done = false;
-        if (i < this.line_idx) { done = true;
-        } else if (i == this.line_idx) {
-          if (cidx < this.char_idx) { done = true; }
-          else { done = false; }
-        } else { done = false; }
+        let state = "not_done";
+        // 在“还未确定的辨识结果”中
+        const slidx = this.saved_line_idx, scidx = this.saved_char_idx;
+        const spidx = this.saved_pinyin_idx;
+        if (this.saved_line_idx != undefined && this.saved_char_idx != undefined &&
+            this.saved_pinyin_idx != undefined) {
+          if (this.CompareLineAndCharIdxes(i, cidx, slidx, scidx) < 0) {
+            state = "done";
+          } else if (this.CompareLineAndCharIdxes(i, cidx, this.line_idx, this.char_idx) == -1) {
+            state = "tentative";
+          } else if (this.CompareLineAndCharIdxes(i, cidx, this.probe_lidx, this.probe_cidx) == -1) {
+            state = "can probe"
+          } else {
+            state = "not done";
+          }
+        } else {
+          if (this.CompareLineAndCharIdxes(i, cidx, this.line_idx, this.char_idx) < 0) {
+            state = "tentative";
+          } else {
+            state = "not done";
+          }
+        }
     
         // Is punct?
         let highlighted = 0;
@@ -154,10 +189,15 @@ class Aligner {
         }
 
         c0 = color(128, 128, 128, alpha), c = c0;
-        if (done) {
+        if (state == "done") {
           c0 = color(252, 183, 10, alpha);
+        } else if (state == "tentative") {
+          c0 = color(10, 183, 252, alpha);
+        } else if (state == "can probe") {
+          c0 = color(32, 255, 32, alpha);
         }
-        if (!done && highlighted > 0) {
+
+        if (state != "done" && highlighted > 0) {
           c = lerpColor(c0, color(192, 192, 192, alpha), highlighted);
         } else {
           c = c0;
@@ -208,7 +248,7 @@ class Aligner {
   }
   
   // 同时也会进行模糊音的处理
-  NormalizePinyin(x) {  
+  NormalizePinyin(x) {
     const x_backup = x;
     const PinyinConsonants = [
       "zh", "ch", "sh", "b", "p", "m", "f", "d", "t", "n", "l", "g", "k", "h", "j", "q", "x",
@@ -274,12 +314,14 @@ class Aligner {
     
     const FuzzyPinyinCompleteList = [
       new Set([ "ri", "lv", "ng" ]),
-      new Set([ "wang", "huang", "weng", "wen", "wan", "huan", "o", "fang", "hua" ]), 
+      new Set([ "wang", "huang", "weng", "wen", "wan", "huan", "o", "fang", "hua", "feng", "bang" ]), 
+      new Set([ "jia", "jiang" ]),
       new Set([ "lei", "wei" ]),
       new Set([ "li", "ling" ]),
       new Set([ "qiu", "qiong" ]),
       new Set([ "ju",  "yu" ]), // 居
       new Set([ "shi", "chi"]), // 齿
+      new Set([ "liao", "yao" ]), // 辽
     ];
       
     if (USE_FUZZY) {
@@ -322,6 +364,35 @@ class Aligner {
     return this.NormalizePinyin(x);
   }
   
+  PushIdxes() {
+    this.saved_char_idx   = this.char_idx;
+    this.saved_line_idx   = this.line_idx;
+    this.saved_pinyin_idx = this.pinyin_idx;
+  }
+
+  PopIdxes() {
+    if (this.saved_pinyin_idx != undefined) {
+      this.pinyin_idx = this.saved_pinyin_idx; this.saved_pinyin_idx = undefined;
+    }
+    if (this.saved_line_idx != undefined) {
+      this.line_idx = this.saved_line_idx; this.saved_line_idx = undefined;
+    }
+    if (this.saved_char_idx != undefined) {
+      this.char_idx = this.saved_char_idx; this.saved_char_idx = undefined;
+    }
+  }
+
+  OnStartRecording() {
+    this.PushIdxes();
+  }
+
+  OnStopRecording() {
+    this.PushIdxes();
+    this.char_idx = this.saved_char_idx;
+    this.line_idx = this.saved_line_idx;
+    this.pinyin_idx = this.saved_pinyin_idx;
+  }
+
   OnNewPinyins(newpys) {
     // 返回是在第几个 index 找到的
     let PROBE_RANGE = PROBE_RANGE0, PROBE_INCREMENT = PROBE_INCREMENT0;
@@ -370,11 +441,109 @@ class Aligner {
     }
     
     if (found != -1) {
-      console.log("found=" + found + " (" + found_char + "), newpinyin=" + newpys);
       return found;
     }
      
     return -1;
+  }
+
+  do_AllPinyinList(all_pinyins) {
+    
+    // 用于显示 当前 最远可以 probe 到哪里
+    this.probe_cidx = undefined;
+    this.probe_lidx = undefined;
+    this.probe_pidx = undefined;
+
+    const lidx_lb = this.saved_line_idx, cidx_lb = this.saved_char_idx, pidx_lb = this.saved_pinyin_idx;
+    const PROBE_RANGE = 5;
+    let last_probe_idx = -1;
+    const char2pyidx = [];  // 每个字最先是由几号时间片对齐的
+
+    if (lidx_lb == undefined || cidx_lb == undefined || pidx_lb == undefined) {
+      return;
+    }
+
+    // 预期说话速度
+    let i_watermark = 0;
+    
+    while (i_watermark < all_pinyins.length) {
+      let num_i_matched = 0;
+      let last_coasting_i = -999;
+      let coasting = 0;
+      for (let i=i_watermark; i<all_pinyins.length; i++) {
+        let lidx = lidx_lb, cidx = cidx_lb, pidx = pidx_lb;
+
+        if (all_pinyins.length[i] > 0) {
+          if (last_coasting_i <= i-2) {
+            last_coasting_i = i;
+            coasting++;
+          }
+        }
+        
+        const j_max = last_probe_idx + PROBE_RANGE + coasting;
+
+        for (let j=0; j<j_max; j++) {
+          while (j >= char2pyidx.length) {
+            char2pyidx.push(-1);
+          }
+
+          const target = this.data[lidx][1][pidx]
+          const norm_target = this.NoTonePinyin(target);
+
+          for (let k=0; k<all_pinyins[i].length; k++) {
+            const cand = all_pinyins[i][k];
+            const norm_cand = this.NoTonePinyin(cand);
+
+            if (norm_target == norm_cand) {
+              if (char2pyidx[j] < i) {
+                char2pyidx[j] = i;
+                num_i_matched ++;
+                i_watermark = max(i_watermark, i+1);
+              }
+              if (last_probe_idx < j) {
+                last_probe_idx = j;
+
+                // 指向“下一个”
+                [this.line_idx, this.char_idx, this.pinyin_idx] = 
+                  this.NextStep(lidx, cidx, pidx);
+              }
+            }
+          }
+
+          [lidx, cidx, pidx] = this.NextStep(lidx, cidx, pidx);
+          if (lidx >= this.data.length) break;
+        }
+        this.probe_lidx = lidx;
+        this.probe_cidx = cidx;
+        this.probe_pidx = pidx;
+      }
+      if (num_i_matched == 0) return;
+    }
+  }
+
+  // 从RecorderViz来的，从此次用户按下REC始所识别出的拼音
+  // 好处有二：一为可更准确，二是可以将识别结果用作显示反馈
+  OnRecogStatus(rs) {
+    let all_pinyins = []; // 下标：时间片（1秒12片）
+    const T = 12 / 4; // 因为一次是走四分之一窗口大小(250ms vs 1s)
+    for (let i=0; i<rs.length; i++) {
+      const t_offset = T * i;
+      const entry = rs[i];
+
+      // 有更新，但是还未更新完，最后一个entry是undefined
+      if (entry == undefined) break;
+
+      const pinyins = entry[0].trim().split(" "), widxes = entry[1];
+      for (let j=0; j<widxes.length; j++) {
+        const t = widxes[j] + t_offset;
+        while (all_pinyins.length <= t) {
+          all_pinyins.push([]);
+        }
+        all_pinyins[t].push(pinyins[j]);
+      }
+    }
+    console.log(all_pinyins);
+    this.do_AllPinyinList(all_pinyins);
   }
   
   Reset() {
@@ -386,14 +555,30 @@ class Aligner {
     this.start_drag_my = 0;
     this.is_dragging = false;
     this.is_hovered = false;
+    this.saved_pinyin_idx = undefined;
+    this.saved_line_idx = undefined;
+    this.saved_char_idx = undefined;
+  }
+
+  do_NextStep() {
+    [this.line_idx, this.char_idx, this.pinyin_idx] = this.NextStep(
+      this.line_idx, this.char_idx, this.pinyin_idx);
   }
   
-  do_NextStep() {
-    if (this.line_idx >= this.data.length) return;
-    else if (this.line_idx == this.data_length-1 && this.pinyin_idx >= this.data[this.line_idx][1].length-1) return;
-    
-    const line = this.data[this.line_idx][1];
-    let pidx = this.pinyin_idx, lidx = this.line_idx;
+  do_PrevStep() {
+    [this.line_idx, this.char_idx, this.pinyin_idx] = this.PrevStep(
+      this.line_idx, this.char_idx, this.pinyin_idx);
+  }
+
+  // 计算【下一个字】的(line_idx, char_idx, pinyin_idx)
+  NextStep(lidx, cidx, pidx) {
+    if (lidx >= this.data.length) {
+      return [lidx, cidx, pidx];
+    } else if (lidx == this.data.length - 1 && pidx >= this.data[lidx][1].length - 1) {
+      return [lidx, cidx, pidx];
+    }
+
+    const line = this.data[lidx][1];
     
     pidx ++;
     if (pidx >= line.length) {
@@ -403,28 +588,28 @@ class Aligner {
         pidx = line.length-1;
       }
     }
-    this.char_idx = this.PinyinIdxToCharIdx(lidx, pidx);
-    this.line_idx = lidx;
-    this.pinyin_idx = pidx;
+    cidx = this.PinyinIdxToCharIdx(lidx, pidx);
+    return [lidx, cidx, pidx];
   }
-  
-  do_PrevStep() {
-    if (this.line_idx < 0) return;
-    else if (this.line_idx == 0 && this.pinyin_idx == 0) return;
-    
-    let pidx = this.pinyin_idx, lidx = this.line_idx;
+
+  PrevStep(lidx, cidx, pidx) {
+    if (lidx < 0) {
+      return [lidx, cidx, pidx];
+    } else if (lidx == 0 && pidx == 0) {
+      return [lidx, cidx, pidx];
+    }
+
     pidx --;
     if (pidx < 0) {
       if (lidx > 0) {
         lidx --; pidx = this.data[lidx][1].length-1;
       } else { pidx = 0; }
     }
-    this.char_idx = this.PinyinIdxToCharIdx(lidx, pidx);
-    this.line_idx = lidx;
-    this.pinyin_idx = pidx;
+    cidx = this.PinyinIdxToCharIdx(lidx, pidx);
+    return [lidx, cidx, pidx];
   }
   
-  Step(x) {
+  MoveCursor(x) {
     if (x < 0) { for (let i=0; i>x; i--) { this.do_PrevStep(); } }
     else if (x > 0) { for (let i=0; i<x; i++) { this.do_NextStep(); } }
   }
@@ -459,6 +644,7 @@ class Aligner {
       return this.pan_y;
     }
   }
+
 
   Update(ms, override_k = undefined) {
     // 聚焦到当前行
@@ -617,8 +803,8 @@ function OnNewPinyins(x) {
 
 function ReadAlongKeyPressed(key, keyCode) {
   if (key == ' ') { g_aligner.NextChar(); }
-  else if (keyCode == LEFT_ARROW) { g_aligner.Step(-1); }
-  else if (keyCode == RIGHT_ARROW) { g_aligner.Step(1); }
+  else if (keyCode == LEFT_ARROW) { g_aligner.MoveCursor(-1); }
+  else if (keyCode == RIGHT_ARROW) { g_aligner.MoveCursor(1); }
   else if (key == '[') { LoadPrevDataset(); }
   else if (key == ']') { LoadNextDataset(); }
   else if (key == 'R') { LoadDataset(g_data_idx); }
