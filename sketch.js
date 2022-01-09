@@ -315,6 +315,7 @@ class RecorderViz extends MyStuff {
     this.is_recording = false;
     this.x = 16;
     this.y = 680;
+    this.w = 448;
     this.window_delta = 10; // ms
     this.graph.clear();
     this.start_record_ms = 0;
@@ -326,20 +327,23 @@ class RecorderViz extends MyStuff {
     this.window_width = 100;
 
     this.recog_status = [];
-    this.recog_decodes = [];
+    this.recog_decode_timestamps = [];
+    this.recog_decode_per_bin = [];
     this.serial = 0;
     this.start_serial = 0; // 此次StartRecording时的serial
 
     this.draw_stat = false;  // 不写状态文字
     this.draw_fft = false;   // 不画FFT
     this.draw_energy = true; // 只画能量图
+
   }
 
   Clear() {
     this.buffer = [];
     this.energy_readings = [];
     this.recog_status = [];
-    this.recog_decodes = [];
+    this.recog_decode_timestamps = [];
+    this.recog_decode_per_bin = [];
     this.duration_ms = 0;
     if (this.graph != undefined)
       this.graph.clear();
@@ -350,8 +354,9 @@ class RecorderViz extends MyStuff {
     this.is_recording = true;
     this.buffer = [];
     this.energy_readings = [];
-    this.recog_decodes = [];
+    this.recog_decode_timestamps = [];
     this.recog_status = [];
+    this.recog_decode_per_bin = [];
     this.start_record_ms = millis();
     this.window_offset = 0;
     this.start_serial = this.serial;
@@ -517,8 +522,9 @@ class RecorderViz extends MyStuff {
       }
     }
 
-    if (w1 > W0) {
-      scale(W0/w1, 1);
+    let scale_x = 1;
+    if (w > this.w) {
+      scale_x = this.w / w;
     }
 
     // Draw pred status
@@ -537,12 +543,6 @@ class RecorderViz extends MyStuff {
     // }
     // dy += 6;
 
-    strokeWeight(3);
-    this.recog_decodes.forEach((ts) => {
-      point(ts, dy);
-    })
-    strokeWeight(1);
-
     if (this.draw_fft) {
       image(this.graph, 0, dy+8);
       noFill();
@@ -554,8 +554,56 @@ class RecorderViz extends MyStuff {
       dy += h;
     }
 
+    const soundbar_h = 36;
+    // 画出边框
+    fill("rgba(255,255,255,0.7)");
+    stroke(128);
+    rect(0, 0, this.w, soundbar_h);
+
+    let is_hovered = false;
+    if (mx >= this.x && my >= this.y &&
+        mx <= this.x + this.w && 
+        my <= this.y + soundbar_h) {
+      is_hovered = true;
+    }
+
+    stroke(0);
+    
+    if (is_hovered) {
+      const step = this.window_delta * scale_x;
+      const wwid = this.window_width * scale_x;
+      const hover_widx = parseInt((mx - this.x) / step);
+      let dx = hover_widx * step;
+      let dwwid = min(wwid, this.w-dx);
+      if (hover_widx < this.recog_status.length) {
+        stroke("#33F");
+        fill("rgba(32,32,255,0.2)");
+        rect(dx, 0, dwwid, soundbar_h);
+
+        textAlign(LEFT, TOP);
+        noStroke();
+        fill("#00F");
+        const T = 12; // 见myworker.js
+        text(this.recog_status[hover_widx][0], dx, soundbar_h);
+        stroke("#33F");
+        strokeWeight(3);
+        this.recog_status[hover_widx][1].forEach((local_offset) => {
+          const timestamp = this.window_delta * hover_widx + (0.5+local_offset)*this.window_width/T;
+          point(scale_x * timestamp, dy+4);
+        });
+      } else {
+        stroke("#333");
+        fill("rgba(128,128,128,0.2)");
+        rect(dx, 0, dwwid, soundbar_h);
+      }
+    }
+
+    stroke(128);
+    noFill();
+    strokeWeight(2);
     if (this.draw_energy) {
-      
+      push();
+      scale(scale_x, 1);
       let lx = 0, ly = dy + 20;
       const step = 4;
       for (let i=0; i<this.energy_readings.length; i += step) {
@@ -565,13 +613,32 @@ class RecorderViz extends MyStuff {
         lx += step;
         line(lx, dy0, lx, dy1);
       }
-      dy += 36;
+      pop();
     }
+    
+    {
+      push();
+      strokeWeight(3);
+      this.recog_decode_timestamps.forEach((ts) => {
+        point(ts * scale_x, dy+2);
+      })
 
-    // 画出边框
-    noFill();
-    stroke(128);
-    rect(this.x, this.y, W0-this.x, dy);
+      if (is_hovered) {
+        // 只有Hover了才标注数目
+        noStroke();
+        fill(32);
+        textAlign(CENTER, BOTTOM);
+        const T = 12; // 参见worker.js
+        for (let bin_idx = 0; bin_idx < this.recog_decode_per_bin.length; bin_idx ++) {
+          const count = this.recog_decode_per_bin[bin_idx];
+          if (count > 0) {
+            const dx = this.window_width / T * (0.5 + bin_idx);
+            text(count, dx * scale_x, dy-2);
+          }
+        }
+      }
+      pop();
+    }
 
     pop();
 
@@ -582,16 +649,26 @@ class RecorderViz extends MyStuff {
   // timestamps为该输入内的 timestamp
   OnDecodedAndAligned(serial, decoded, timestamps) {
     let offset = serial - this.start_serial;
-    if (offset < this.recog_status.length) {
-      this.recog_status[offset] = 2;
+    if (offset <=this.recog_status.length) {
+      this.recog_status[offset] = [decoded, timestamps];
     }
 
     console.log(timestamps)
+    console.log(decoded);
+    console.log(offset);
     // 这一个预测输入 在这一轮录音中的开始时间戳
     offset = (serial - this.start_serial) * this.window_delta;
     timestamps.forEach((t) => {
       // 因为CTC风格中 一列 是 10ms，而此处 画图时 1象素=1ms，所以要乘以10
-      this.recog_decodes.push(offset + t * 10);
+      const T = 12; // 见myworker.js，一个窗口（1s）切成12份
+      const timestamp = offset + (t+0.5) * (this.window_width / T);
+      this.recog_decode_timestamps.push(timestamp);
+
+      const bin_index = parseInt(timestamp / (this.window_width / T));
+      while (this.recog_decode_per_bin.length <= bin_index) {
+        this.recog_decode_per_bin.push(0);
+      }
+      this.recog_decode_per_bin[bin_index] ++;
     });
   }
 }
