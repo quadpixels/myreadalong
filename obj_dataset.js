@@ -6,5 +6,10 @@ const OBJ_DATASET = {
   "coffin4": {
     "objs": [ "coffin4_1.obj", "coffin4_2.obj", "coffin4_3.obj", "coffin4_4.obj", "coffin4_5.obj", "coffin4_6.obj" ],
     "texture": undefined
+  },
+  "coffin93": {
+    "objs": [ "coffin93_1.obj", "coffin93_2.obj", "coffin93_3.obj", "coffin93_4.obj", "coffin93_5.obj", "coffin93_6.obj", "coffin93_7.obj" ],
+    "texture": undefined
   }
+
 }

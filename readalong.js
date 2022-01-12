@@ -1,5 +1,93 @@
 const PROBE_RANGE0 = 4, PROBE_INCREMENT0 = 2;
 
+class AlignerParticle {
+  // 这里的坐标是canvas上的坐标
+  constructor(start, target, target_lidx, target_cidx) {
+    this.p0 = start.copy();
+    console.log(start);
+    console.log(target);
+    this.start  = start;
+    this.target = target;
+    this.pos = start.copy();
+    this.done = false;
+    this.target_lidx = target_lidx; this.target_cidx = target_cidx;
+
+    this.wait_ms = 0;
+
+    this.state = "wait";
+    this.explode_ms = 500;
+  }
+  Update(delta_ms) {
+    const VELOCITY = 400;
+    let target_effective = this.target.copy();
+    const translate_y = g_aligner.GetPanY() * (-1);
+    target_effective.x += g_readalong_layout.x;
+    target_effective.y += g_readalong_layout.y + translate_y;
+    
+    const t = target_effective;
+
+    if (this.state == "wait") {
+      this.wait_ms -= delta_ms;
+      if (this.wait_ms < 0) {
+        this.wait_ms = 0;
+        this.state = "move";
+      }
+    } else if (this.state == "move") {
+      const THRESH = VELOCITY * delta_ms / 1000;
+      if (this.pos.copy().sub(t).magSq() <= THRESH * THRESH) {
+        this.pos = t.copy();
+        this.state = "explode";
+      } else {
+        const dir = target_effective.copy().sub(this.pos).normalize();
+        const advance = dir.copy().mult(THRESH);
+        this.pos.add(advance)
+      }
+    } else if (this.state == "explode") {
+      this.explode_ms -= delta_ms;
+      if (this.explode_ms < 0) {
+        this.explode_ms = 0;
+        this.done = true;
+      }
+    }
+  }
+  Render() {
+    circle(this.pos.x, this.pos.y, 8);
+    //line(this.pos.x, this.pos.y, this.p0.x, this.p0.y);
+  }
+}
+
+class AlignerParticleSystem {
+  constructor() {
+    this.particles = [];
+  }
+
+  Render() {
+    stroke(32);
+    fill(color(255, 234, 32, 128));
+    this.particles.forEach((p) => {
+      p.Render();
+    })
+  }
+
+  Update(delta_ms, target_lidx, target_cidx) {
+    //const lerp_k = pow(0.95, delta_ms / 16);
+    let np = [];
+    this.particles.forEach((p) => {
+      p.Update(delta_ms);
+      if (!p.done) {
+        np.push(p);
+      }
+    });
+    this.particles = np;
+  }
+
+  AddParticle(p0, p1, delay) {
+    const p = new AlignerParticle(p0, p1);
+    p.wait_ms = delay;
+    this.particles.push(p);
+  }
+}
+
 class Aligner {
   constructor() {
     this.w = 478; this.h = 640;
@@ -13,6 +101,12 @@ class Aligner {
     this.probe_lidx = undefined;
     this.probe_pidx = undefined;
     this.probe_cidx = undefined;
+
+    // Lidx, Cidx
+    this.char_positions = [];
+
+    // 粒子到达时就会标记为True
+    this.char_done = [];
   }
   
   LoadData(data, title, text_size) {
@@ -23,7 +117,7 @@ class Aligner {
     this.line_idx = 0; // 第几行
     this.prev_line_idx = 0;
     
-    this.char_idx   = 0; // 第几个字，可能与拼音有出入 
+    this.char_idx   = 0; // 第几个字，可能与拼音有出入
     this.pinyin_idx = 0; // 第几个拼音
 
     console.log(this.data)
@@ -39,9 +133,12 @@ class Aligner {
       }
     }
     OnUpdateWeightMask();
+
+    this.CalculateTextPositions();
+
+    // [ (时间片idx, 文字位置) ]
+    this.alignments = [];
   }
-
-
 
   SpawnPuzzleEventLabels(num_steps) {
 
@@ -104,6 +201,36 @@ class Aligner {
     }
   }
 
+  // 计算 Layout之后 所有字符的位置
+  CalculateTextPositions() {
+    this.char_positions = [];
+    // 画图的位置：(x+dx, y)
+    // 在Render中，需要加上(g_readalong_layout.x, g_readalong_layout.y + translate_y)
+    // 在这里就不加了
+    push();
+    let y = 0;
+    const TEXT_SIZE = this.text_size;
+    textSize(TEXT_SIZE);
+    for (let i=0; i<this.data.length; i++) {
+      const line = this.data[i][0];
+      const line_cps = [];
+      let dx = 0;
+      for (let cidx = 0; cidx < line.length; cidx ++) {
+        const ch = line[cidx];
+        const tw = textWidth(ch);
+        dx = dx + tw;
+        line_cps.push(new p5.Vector(dx+tw/2, y+TEXT_SIZE/2));
+      }
+      y = y + TEXT_SIZE * 1.2;
+      this.char_positions.push(line_cps);
+    }
+    pop();
+  }
+
+  DrawParticles() {
+
+  }
+
   Render() {
     push();
     noStroke();
@@ -127,10 +254,11 @@ class Aligner {
     let hl_x = g_readalong_layout.x;
     fill(220);
     if (hl_y1 > ly && hl_y0 < lh+ly) {
-      rect(hl_x, hl_y0, this.w, hl_y1-hl_y0);
+      //rect(hl_x, hl_y0, this.w, hl_y1-hl_y0);
     }
 
-    let y = g_readalong_layout.y + translate_y, x = g_readalong_layout.x;
+    let y = g_readalong_layout.y + translate_y;
+    let x = g_readalong_layout.x;
     for (let i=0; i<this.data.length; i++) {
       const line = this.data[i][0];
       
@@ -383,11 +511,26 @@ class Aligner {
   }
 
   OnStartRecording() {
+    this.probe_cidx = undefined;
+    this.probe_lidx = undefined;
+    this.probe_pidx = undefined;
+
     this.PushIdxes();
+    this.alignments = [];
   }
 
   OnStopRecording() {
-    this.PushIdxes();
+    let idx = 0;
+    this.alignments.forEach((a) => {
+      const p0 = new p5.Vector(g_recorderviz.x + 3 * a[0], g_recorderviz.y);
+      g_aligner_particle_system.AddParticle(p0, a[1], idx*20);
+      idx ++;
+    });
+
+    this.saved_char_idx   = this.char_idx;
+    this.saved_line_idx   = this.line_idx;
+    this.saved_pinyin_idx = this.pinyin_idx;
+
     this.char_idx = this.saved_char_idx;
     this.line_idx = this.saved_line_idx;
     this.pinyin_idx = this.saved_pinyin_idx;
@@ -448,14 +591,14 @@ class Aligner {
   }
 
   do_AllPinyinList(all_pinyins) {
-    
+    this.alignments = [];
     // 用于显示 当前 最远可以 probe 到哪里
     this.probe_cidx = undefined;
     this.probe_lidx = undefined;
     this.probe_pidx = undefined;
 
     const lidx_lb = this.saved_line_idx, cidx_lb = this.saved_char_idx, pidx_lb = this.saved_pinyin_idx;
-    const PROBE_RANGE = 5;
+    const PROBE_RANGE = 6;
     let last_probe_idx = -1;
     const char2pyidx = [];  // 每个字最先是由几号时间片对齐的
 
@@ -479,7 +622,7 @@ class Aligner {
             coasting++;
           }
         }
-        
+
         const j_max = last_probe_idx + PROBE_RANGE + coasting;
 
         for (let j=0; j<j_max; j++) {
@@ -495,10 +638,11 @@ class Aligner {
             const norm_cand = this.NoTonePinyin(cand);
 
             if (norm_target == norm_cand) {
-              if (char2pyidx[j] < i) {
+              if (char2pyidx[j] <= i) {
                 char2pyidx[j] = i;
                 num_i_matched ++;
                 i_watermark = max(i_watermark, i+1);
+                this.alignments.push([i, this.char_positions[lidx][cidx].copy()]);
               }
               if (last_probe_idx < j) {
                 last_probe_idx = j;
@@ -723,16 +867,19 @@ class ReadAlongLayout {
 
 let g_aligner;
 let g_data_idx = 2;
+let g_aligner_particle_system;
+
 function SetupReadAlong() {
   g_aligner = new Aligner();
   g_readalong_layout = new ReadAlongLayout();
   LoadDataset(g_data_idx);
+  g_aligner_particle_system = new AlignerParticleSystem();
 }
 
 function LoadDataset(idx) { 
   g_aligner.LoadData(DATA[idx], TITLES[idx], FONT_SIZES[idx]); 
   g_aligner.Reset();
-  LoadPuzzleDataset("coffin4");  // TODO：加入其它的拼图
+  LoadPuzzleDataset("coffin93");  // TODO：加入其它的拼图
   g_aligner.SpawnPuzzleEventLabels(g_puzzle_vis.objects.length);
 }
 
@@ -785,6 +932,10 @@ function RenderReadAlong(delta_ms) {
   noFill(); stroke(128);
   const l = g_readalong_layout;
   rect(l.x, l.y, l.w, l.h);
+
+  g_aligner_particle_system.Update(delta_ms);
+  g_aligner_particle_system.Render();
+
   pop();
 }
 

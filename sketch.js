@@ -726,7 +726,7 @@ class Button extends MyStuff {
           f = color(192, 44, 56, 192);
         } else {
           c = color(56, 32, 32); // 莓红
-          f = color(255, 255, 255, 192);
+          f = color(255, 240, 240, 192);
         }
       }
     }
@@ -1619,16 +1619,18 @@ function draw() {
 
   pop();
 
-  push();
-  noStroke();
-  fill(192);
-  textAlign(LEFT, TOP);
-  text(parseInt(width) + "x" + parseInt(height) + "x" + g_scale.toFixed(2) + "\n"
-     + windowWidth + "x" + windowHeight + "\n"
-     + g_touch_state, 1, 1);
+  if (false) {
+    push();
+    noStroke();
+    fill(192);
+    textAlign(LEFT, TOP);
+    text(parseInt(width) + "x" + parseInt(height) + "x" + g_scale.toFixed(2) + "\n"
+      + windowWidth + "x" + windowHeight + "\n"
+      + g_touch_state, 1, 1);
 
 
-  pop();  // end scale
+    pop();  // end scale
+  }
 
   g_frame_count ++;
   g_last_draw_ms = ms;
