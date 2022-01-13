@@ -1165,7 +1165,7 @@ var graph_mfcc0, graph_diff;
 var g_moving_window_vis;
 var g_frameskip_vis;
 var g_runningmode_vis, g_stats4nerds;
-
+var g_introscreen;
 var soundReady = true;
 
 var normalized = [];
@@ -1546,6 +1546,8 @@ async function setup() {
   setTimeout(() => {
     g_btn_load_model.clicked();
   }, 1000);
+
+  g_introscreen = new IntroScreen();
 }
 
 function draw() {
@@ -1559,6 +1561,7 @@ function draw() {
   } else {
     delta_ms = (ms - g_last_draw_ms);
     g_animator.Update(delta_ms);
+    g_introscreen.Update(delta_ms);
   }
 
   background(255);
@@ -1603,7 +1606,6 @@ function draw() {
   })
 
   g_recorderviz.Render();
-  
   g_stats4nerds.Render();
 
   // ====================================================================
@@ -1616,6 +1618,9 @@ function draw() {
   const l = 10 / g_scale;
   line(mx - l, my, mx + l, my);
   line(mx, my - l, mx, my + l);
+
+  // Intro UI
+  g_introscreen.Render();
 
   pop();
 
