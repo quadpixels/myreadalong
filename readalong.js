@@ -88,8 +88,9 @@ class AlignerParticleSystem {
   }
 }
 
-class Aligner {
+class Aligner extends MyStuff {
   constructor() {
+    super();
     this.w = 478; this.h = 640;
     this.Reset();
     this.text_size = 28;
@@ -144,7 +145,6 @@ class Aligner {
 
     for (let i=0; i<num_steps; i++) {
       const data_idx = parseInt(map(i+1, 0, num_steps, 0, this.data.length-1));
-      console.log(data_idx);
       this.puzzle_events[data_idx].push("※");
     }
   }
@@ -352,7 +352,7 @@ class Aligner {
 
     textSize(20);
     const dy = g_readalong_layout.title_y;
-    let t = "第" + (1+g_data_idx) + "/" + DATA.length + "篇 " + g_aligner.title
+    let t = g_aligner.title;
     const sp = t.split("\n");
     let tw = 12;
     sp.forEach((line) => {
@@ -515,6 +515,9 @@ class Aligner {
     this.probe_lidx = undefined;
     this.probe_pidx = undefined;
 
+    // 让probe的范围显示出来
+    this.do_AllPinyinList([" "]);
+
     this.PushIdxes();
     this.alignments = [];
   }
@@ -534,6 +537,10 @@ class Aligner {
     this.char_idx = this.saved_char_idx;
     this.line_idx = this.saved_line_idx;
     this.pinyin_idx = this.saved_pinyin_idx;
+
+    this.probe_lidx = undefined;
+    this.probe_cidx = undefined;
+    this.probe_pidx = undefined;
   }
 
   OnNewPinyins(newpys) {
@@ -891,6 +898,22 @@ function LoadNextDataset() {
   g_data_idx ++; if (g_data_idx >= DATA.length) { g_data_idx = DATA.length - 1; }
   LoadDataset(g_data_idx);
 }
+
+function LoadMultipleDatasets(title_idxes, title) {
+  const data = [];
+  let font_size = 40;
+  title_idxes.forEach((i) => {
+    const passage = DATA[i];
+    passage.forEach((line) => {
+      data.push(line);
+    });
+    font_size = Math.min(font_size, FONT_SIZES[i]);
+  });
+  g_aligner.LoadData(data, title, font_size);
+
+  g_aligner.SpawnPuzzleEventLabels(g_puzzle_vis.objects.length);
+}
+
 function ModifyDataIdx(delta) {
   if (delta > 0) {
     for (let i=0; i<delta; i++) {

@@ -1,6 +1,7 @@
 // 2021-10-09
 // audio stuff
 
+const COLOR_BACKGROUND = "rgba(249, 239, 227, 1)";
 const COLOR0 = "rgba(167,83,90,1)"; // 满江红
 const COLOR1 = "rgba(238,162,164,1)" // 牡丹粉红
 const COLOR_FFTBARS = "rgba(238,162,164,1)" // 牡丹粉红
@@ -98,8 +99,12 @@ function ForAllButtons(callback) {
     callback(b);
   })
   do_ForAllButtons(g_stats4nerds, callback);
+  if (g_levelselect.visible) {
+    do_ForAllButtons(g_levelselect, callback);
+  }
 }
 
+// TODO: 以下这两个是用于画图的，还没有用于变换touch事件
 var g_ui_translate_x = 0, g_ui_translate_y = 0;
 class MyStuff {
   constructor() {
@@ -121,6 +126,7 @@ class MyStuff {
 
   Render() {
     if (this.is_hidden == true) return;
+    if (this.parent && this.parent.visible == false) return;
     this.Push();
     this.do_Render();
     if (this.children != undefined) {
@@ -129,6 +135,10 @@ class MyStuff {
       })
     }
     this.Pop();
+  }
+
+  do_Render() {
+    // NOP
   }
 
   SetParent(p) {
@@ -151,6 +161,17 @@ class MyStuff {
 
   Hover(mx, my) {
 
+  }
+
+  // 回溯到UI树的顶端，看自己的 translation 是多少
+  GetParentTranslate() {
+    let ret = new p5.Vector();
+    let p = this.parent;
+    while (p != undefined) {
+      ret.x += p.x; ret.y += p.y;
+      p = p.parent;
+    }
+    return ret;
   }
 }
 
@@ -351,6 +372,8 @@ class RecorderViz extends MyStuff {
   }
 
   StartRecording() {
+    if (g_levelselect.visible || g_introscreen.visible) return;
+
     this.graph.clear();
     this.is_recording = true;
 
@@ -703,6 +726,8 @@ class Button extends MyStuff {
     this.released = function() {}
     this.txt = txt;
     this.border_style = 2;
+    this.checked = false;
+    this.text_size = undefined;
   }
   do_Render() {
     if (!this.is_enabled) {
@@ -712,14 +737,18 @@ class Button extends MyStuff {
     push();
 
     let c = color(48, 48, 48);
-    let f = color(255, 255, 255, 192);
+    let f = color(212, 170, 110, 192);
     if (!this.is_enabled) {
       c = "#777";
       f = color(128, 128, 128, 192);
     } else {
       if (!this.is_hovered) {
         c = color(48, 48, 48);
-        f = color(255, 255, 255, 192);
+        if (this.checked) {
+          f = color(193, 84, 71, 192);
+        } else {
+          f = color(212, 170, 110, 192);
+        }
       } else {
         if (this.is_pressed) {
           c = color(56, 32, 32); // 高粱红
@@ -747,18 +776,29 @@ class Button extends MyStuff {
     }
 
     fill(c);
-    textSize(Math.max(14, h / 3));
+    if (this.text_size != undefined) {
+      textSize(this.text_size);
+    } else {
+      textSize(Math.max(14, this.h/3));
+    }
+
     textAlign(CENTER, CENTER);
     noStroke();
     text(this.txt, w/2, h/2);
     pop();
   }
   do_Hover(mx, my) {
+    const parent_xy = this.GetParentTranslate();
+    
     if (this.IsHidden()) {
       this.is_hovered = false;
     }
-    mx = mx - g_ui_translate_x;
-    my = my - g_ui_translate_y;
+
+    mx -= g_ui_translate_x;
+    my -= g_ui_translate_y;
+    mx -= parent_xy.x;
+    my -= parent_xy.y;
+
     if (!this.is_enabled) return;
     if (mx >= this.x          && my >= this.y &&
         mx <= this.x + this.w && my <= this.y + this.h) {
@@ -1165,7 +1205,8 @@ var graph_mfcc0, graph_diff;
 var g_moving_window_vis;
 var g_frameskip_vis;
 var g_runningmode_vis, g_stats4nerds;
-var g_introscreen;
+var g_introscreen, g_levelselect;
+var g_game_ui_node;
 var soundReady = true;
 
 var normalized = [];
@@ -1255,6 +1296,7 @@ function ResetWeightMask() {
 }
 
 async function setup() {
+  g_game_ui_node = new MyStuff();
   // Setup window stuff
   for (let i=0; i<PINYIN_LIST.length; i++) {
     let p = PINYIN_LIST[i];
@@ -1548,6 +1590,13 @@ async function setup() {
   }, 1000);
 
   g_introscreen = new IntroScreen();
+  g_levelselect = new LevelSelect();
+
+  // 设置UI层次关系
+  g_stats4nerds.SetParent(g_game_ui_node);
+  g_buttons.forEach((b) => {
+    b.SetParent(g_game_ui_node);
+  })
 }
 
 function draw() {
@@ -1564,7 +1613,7 @@ function draw() {
     g_introscreen.Update(delta_ms);
   }
 
-  background(255);
+  background(COLOR_BACKGROUND);
   textSize(12);
   push();
   scale(g_scale);
@@ -1600,13 +1649,13 @@ function draw() {
   noStroke();
   if (soundReady) { }
 
-  // 触摸单独在这里另外处理
-  g_buttons.forEach((b) => {
-    b.Render();
-  })
+  //g_buttons.forEach((b) => {
+  //  b.Render();
+  //})
 
   g_recorderviz.Render();
-  g_stats4nerds.Render();
+  g_game_ui_node.Render();
+  //g_stats4nerds.Render();
 
   // ====================================================================
 
@@ -1618,6 +1667,8 @@ function draw() {
   const l = 10 / g_scale;
   line(mx - l, my, mx + l, my);
   line(mx, my - l, mx, my + l);
+
+  g_levelselect.Render();
 
   // Intro UI
   g_introscreen.Render();
