@@ -113,13 +113,15 @@ class Aligner extends MyStuff {
     this.title = title;
     this.data = data.slice();
     this.puzzle_events = [];
+    this.puzzle_events_watermark = -1; // 最大的【点击过的】事件列表
     this.line_idx = 0; // 第几行
     this.prev_line_idx = 0;
     
     this.char_idx   = 0; // 第几个字，可能与拼音有出入
     this.pinyin_idx = 0; // 第几个拼音
 
-    console.log(this.data)
+    console.log(this.data);
+
     if (data.length > 0) {
       // 为了适应空白分隔行
       for (let i=0; i<this.data.length; i++) {
@@ -144,10 +146,26 @@ class Aligner extends MyStuff {
   }
 
   SpawnPuzzleEventLabels(num_steps) {
+    let num_non_empty_lines = 0;
+    this.data.forEach((line) => {
+      if (line[0].length > 0) {
+        num_non_empty_lines ++;
+      }
+    })
+    let num_non_empty_lines_seen = 0;
 
-    for (let i=0; i<num_steps; i++) {
-      const data_idx = parseInt(map(i+1, 0, num_steps, 0, this.data.length-1));
-      this.puzzle_events[data_idx].push("※");
+    let step_idx = 0;
+
+    for (let i=0; i<this.data.length; i++) {
+      if (this.data[i][0].length > 0) {
+        num_non_empty_lines_seen ++;
+      }
+      const data_idx = parseInt(map(step_idx+1, 0, num_steps, 0, num_non_empty_lines));
+      if (num_non_empty_lines_seen >= data_idx) {
+        step_idx ++;
+        this.puzzle_events[i].push("※");
+      }
+      if (step_idx >= num_steps) break;
     }
   }
   
@@ -534,6 +552,19 @@ class Aligner extends MyStuff {
       idx ++;
     });
 
+    let cidx = this.saved_char_idx;
+    let lidx = this.saved_line_idx;
+    let pidx = this.saved_pinyin_idx;
+    while (!(cidx == this.char_idx && lidx == this.line_idx && pidx == this.pinyin_idx)) {
+      if (this.puzzle_events_watermark < lidx) {
+        this.puzzle_events_watermark = lidx;
+        this.puzzle_events[lidx].forEach((entry) => {
+          g_puzzle_director.NextStep();
+        });
+      }
+      [lidx, cidx, pidx] = this.NextStep(lidx, cidx, pidx);
+    }
+
     this.saved_char_idx   = this.char_idx;
     this.saved_line_idx   = this.line_idx;
     this.saved_pinyin_idx = this.pinyin_idx;
@@ -619,23 +650,34 @@ class Aligner extends MyStuff {
 
     // 预期说话速度
     let i_watermark = 0;
+
+    let total_occs = 0;
+    let last_coasting_i = -999;
+    for (let i=0; i<all_pinyins.length; i++) {
+      if (all_pinyins[i].length > 0) {
+        if (last_coasting_i <= i-2) {
+          last_coasting_i = i;
+          total_occs ++;
+        }
+      }
+    }
     
     while (i_watermark < all_pinyins.length) {
       let num_i_matched = 0;
-      let last_coasting_i = -999;
-      let coasting = 0;
+      //let last_coasting_i = -999;
+      //let coasting = 0;
       for (let i=i_watermark; i<all_pinyins.length; i++) {
         let lidx = lidx_lb, cidx = cidx_lb, pidx = pidx_lb;
 
         let num_matches_this_i = 0;
-        if (all_pinyins.length[i] > 0) {
-          if (last_coasting_i <= i-2) {
-            last_coasting_i = i;
-            coasting++;
-          }
-        }
+        //if (all_pinyins.length[i] > 0) {
+        //  if (last_coasting_i <= i-2) {
+        //    last_coasting_i = i;
+        //    coasting++;
+        //  }
+        //}
 
-        const j_max = last_probe_idx + PROBE_RANGE + coasting;
+        const j_max = Math.min(last_probe_idx + PROBE_RANGE, total_occs)// + coasting;
 
         for (let j=0; j<j_max; j++) {
           while (j >= char2pyidx.length) {
@@ -920,7 +962,12 @@ function LoadMultipleDatasets(title_idxes, title, obj_idx) {
   g_aligner.LoadData(data, title, font_size);
 
   if (obj_idx != -999) {
+    let plabel = Object.keys(OBJ_DATASET)[obj_idx];
+    LoadPuzzleDataset(plabel);
     g_aligner.SpawnPuzzleEventLabels(g_puzzle_vis.objects.length);
+    g_readalong_layout.SetHalfHeight();
+  } else {
+    g_readalong_layout.SetFullHeight();
   }
 }
 

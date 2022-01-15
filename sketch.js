@@ -1611,6 +1611,7 @@ function draw() {
     delta_ms = (ms - g_last_draw_ms);
     g_animator.Update(delta_ms);
     g_introscreen.Update(delta_ms);
+    g_levelselect.Update(delta_ms);
   }
 
   background(COLOR_BACKGROUND);

@@ -27,10 +27,6 @@ function preload() {
       const m = loadModel("objs/" + objname);
       g_models[objname] = m;
     })
-    let tex = entry.texture;
-    if (tex != undefined) {
-      g_texes[tex] = loadImage("textures/" + tex);
-    }
   });
 }
 
@@ -43,6 +39,7 @@ function SetupPuzzle() {
 }
 
 function LoadPuzzleDataset(name) {
+  console.log("Loading puzzle dataset: " + name);
   if (g_puzzle_vis == undefined) return;
   let entry = OBJ_DATASET[name];
   g_puzzle_vis.objects = [];

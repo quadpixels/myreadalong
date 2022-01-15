@@ -126,16 +126,16 @@ class LevelSelect extends MyStuff {
   }
 
   DeselectTitle(idx) {
-    console.log("deselect " + idx);
     this.selected_title_idxes = RemoveFromArray(this.selected_title_idxes, idx);
     this.num_sentences -= DATA[idx].length;
     this.UpdateTitles();
   }
 
   SelectTitle(idx) {
-    console.log("select   " + idx);
     this.selected_title_idxes.push(idx);
     this.num_sentences += DATA[idx].length;
+    let first_sentence = DATA[idx][0][0];
+    this.SetPreviewText(first_sentence);
     this.UpdateTitles();
   }
 
@@ -335,6 +335,14 @@ class LevelSelect extends MyStuff {
     this.preview_text = x;
   }
 
+  GetPreviewAlpha() {
+    if (this.preview_countdown_ms > 1000) {
+      return 255;
+    } else {
+      return map(this.preview_countdown_ms, 1000, 0, 255, 0);
+    }
+  }
+
   do_Render() {
     if (!this.visible) return;
     fill(color(252, 232, 199));
@@ -381,7 +389,7 @@ class LevelSelect extends MyStuff {
     }
 
     const breaks = [THRESHOLD_START, THRESHOLD_RABBIT];
-    const break_descs = ["至少需要8句", "20句可开启\n兔子模式"];
+    const break_descs = ["至少需要8句\n才能拼图", "20句可开启\n兔子模式"];
     let break_xs = [];
     for (let i=0; i<breaks.length; i++) {
       const x1 = LEVEL_BAR_X0 + LEVEL_BAR_GAP * breaks[i] -
@@ -443,6 +451,12 @@ class LevelSelect extends MyStuff {
       BREAKS_Y);
     }
 
+    // 预览文字
+    textAlign(CENTER, BOTTOM);
+    noStroke();
+    fill(color(213, 173, 114, this.GetPreviewAlpha()));
+    text(this.preview_text, W0/2, this.btn_poems_y + 90);
+
     pop();
   }
 
@@ -484,9 +498,9 @@ class LevelSelect extends MyStuff {
     const stidxes = this.selected_title_idxes;
 
     if (is_puzzle) {
-      LoadMultipleDatasets(stidxes, "嘿嘿", this.ChosenPuzzleIdx());
+      LoadMultipleDatasets(stidxes, "【芝麻开门】", this.ChosenPuzzleIdx());
     } else {
-      LoadMultipleDatasets(stidxes, "嘿嘿", -999);
+      LoadMultipleDatasets(stidxes, "【芝麻开门】", -999);
     }
 
     this.FadeOut();
