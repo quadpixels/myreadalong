@@ -39,7 +39,7 @@ function SetupPuzzle() {
   //g_cam.RotateAlongGlobalAxis(new p5.Vector(1, 0, 0), -PI*0.6);
   g_cam.pos = new p5.Vector(0, 0, 20);
   g_puzzle_vis = new PuzzleViz();
-  LoadPuzzleDataset("coffin93");
+  LoadPuzzleDataset("stc93");
 }
 
 function LoadPuzzleDataset(name) {

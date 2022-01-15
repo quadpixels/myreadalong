@@ -353,7 +353,9 @@ class LevelSelect extends MyStuff {
     const nb = this.btn_titles.length;
     const pageidx = parseInt(this.title_idx_lb / nb) + 1;
     const np = parseInt((TITLES.length - 1) / nb)+1;
-    text("第" + pageidx + "/" + np + "页", W0/2, this.page_number_y);
+    textAlign(CENTER, CENTER);
+    text("第" + pageidx + "/" + np + "页", W0/2,
+      this.btn_nextpage.y + this.btn_nextpage.h/2);
 
     textSize(30);
 
@@ -456,12 +458,37 @@ class LevelSelect extends MyStuff {
     });
   }
 
+  GenTitle() {
+    const ts = this.selected_title_idxes;
+    let txt = "";
+    const LIMIT = 40;
+    for (let i=0; i<ts.length; i++) {
+      const t = TITLES[ts[i]].split("\n")[0];
+      if ((t + txt).length <= 40) {
+        if (txt.length > 0) {
+          txt = txt + "、";
+        }
+        txt = txt + t;
+      } else {
+        txt += "等" + ts.length + "篇";
+        break;
+      }
+    };
+    return txt;
+  }
+
   // true：使用拼图；false：不使用拼图
   StartGame(is_puzzle) {
     // 组装数据集
     const d = [];
     const stidxes = this.selected_title_idxes;
-    LoadMultipleDatasets(stidxes, "嘿嘿");
+
+    if (is_puzzle) {
+      LoadMultipleDatasets(stidxes, "嘿嘿", this.ChosenPuzzleIdx());
+    } else {
+      LoadMultipleDatasets(stidxes, "嘿嘿", -999);
+    }
+
     this.FadeOut();
   }
 }

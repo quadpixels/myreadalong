@@ -4,8 +4,6 @@ class AlignerParticle {
   // 这里的坐标是canvas上的坐标
   constructor(start, target, target_lidx, target_cidx) {
     this.p0 = start.copy();
-    console.log(start);
-    console.log(target);
     this.start  = start;
     this.target = target;
     this.pos = start.copy();
@@ -123,12 +121,16 @@ class Aligner extends MyStuff {
 
     console.log(this.data)
     if (data.length > 0) {
+      // 为了适应空白分隔行
       for (let i=0; i<this.data.length; i++) {
+        if (this.data[i].length < 1) continue;
         this.data[i][1] = this.data[i][1].slice(); // deep copy
       }
       for (let i=0; i<this.data.length; i++) {
-        if (typeof(this.data[i][1]) == "string") { // 为什么这个会持续
-          this.data[i][1] = this.data[i][1].split(" ");
+        if (this.data[i].length > 0) { 
+          if (typeof(this.data[i][1]) == "string") { // 为什么这个会持续
+            this.data[i][1] = this.data[i][1].split(" ");
+          }
         }
         this.puzzle_events.push([]);
       }
@@ -212,14 +214,16 @@ class Aligner extends MyStuff {
     const TEXT_SIZE = this.text_size;
     textSize(TEXT_SIZE);
     for (let i=0; i<this.data.length; i++) {
-      const line = this.data[i][0];
       const line_cps = [];
-      let dx = 0;
-      for (let cidx = 0; cidx < line.length; cidx ++) {
-        const ch = line[cidx];
-        const tw = textWidth(ch);
-        dx = dx + tw;
-        line_cps.push(new p5.Vector(dx+tw/2, y+TEXT_SIZE/2));
+      if (this.data[i].length > 0) {
+        const line = this.data[i][0];
+        let dx = 0;
+        for (let cidx = 0; cidx < line.length; cidx ++) {
+          const ch = line[cidx];
+          const tw = textWidth(ch);
+          dx = dx + tw;
+          line_cps.push(new p5.Vector(dx+tw/2, y+TEXT_SIZE/2));
+        }
       }
       y = y + TEXT_SIZE * 1.2;
       this.char_positions.push(line_cps);
@@ -623,6 +627,7 @@ class Aligner extends MyStuff {
       for (let i=i_watermark; i<all_pinyins.length; i++) {
         let lidx = lidx_lb, cidx = cidx_lb, pidx = pidx_lb;
 
+        let num_matches_this_i = 0;
         if (all_pinyins.length[i] > 0) {
           if (last_coasting_i <= i-2) {
             last_coasting_i = i;
@@ -645,15 +650,17 @@ class Aligner extends MyStuff {
             const norm_cand = this.NoTonePinyin(cand);
 
             if (norm_target == norm_cand) {
+              console.log("Match: [" + i + "], " + norm_cand + ", " + norm_target + "|" +
+                cand + ", " + target);
               if (char2pyidx[j] <= i) {
                 char2pyidx[j] = i;
                 num_i_matched ++;
                 i_watermark = max(i_watermark, i+1);
                 this.alignments.push([i, this.char_positions[lidx][cidx].copy()]);
               }
-              if (last_probe_idx < j) {
+              if (last_probe_idx < j && num_matches_this_i < 2) { // 最多match两个，不然《元日》说一个字就到最后了
                 last_probe_idx = j;
-
+                num_matches_this_i ++;
                 // 指向“下一个”
                 [this.line_idx, this.char_idx, this.pinyin_idx] = 
                   this.NextStep(lidx, cidx, pidx);
@@ -729,16 +736,16 @@ class Aligner extends MyStuff {
       return [lidx, cidx, pidx];
     }
 
-    const line = this.data[lidx][1];
-    
-    pidx ++;
-    if (pidx >= line.length) {
-      if (lidx < this.data.length) {
-        pidx = 0; lidx ++;
-      } else {
-        pidx = line.length-1;
-      }
+    while (lidx < this.data.length) {
+      pidx ++;
+      const line = this.data[lidx][1];
+      if (pidx >= line.length) {
+        if (lidx < this.data.length) {
+          pidx = 0; lidx ++;
+        }
+      } else break;
     }
+
     cidx = this.PinyinIdxToCharIdx(lidx, pidx);
     return [lidx, cidx, pidx];
   }
@@ -886,7 +893,7 @@ function SetupReadAlong() {
 function LoadDataset(idx) { 
   g_aligner.LoadData(DATA[idx], TITLES[idx], FONT_SIZES[idx]); 
   g_aligner.Reset();
-  LoadPuzzleDataset("coffin93");  // TODO：加入其它的拼图
+  LoadPuzzleDataset("stc29");  // TODO：加入其它的拼图
   g_aligner.SpawnPuzzleEventLabels(g_puzzle_vis.objects.length);
 }
 
@@ -899,7 +906,7 @@ function LoadNextDataset() {
   LoadDataset(g_data_idx);
 }
 
-function LoadMultipleDatasets(title_idxes, title) {
+function LoadMultipleDatasets(title_idxes, title, obj_idx) {
   const data = [];
   let font_size = 40;
   title_idxes.forEach((i) => {
@@ -907,11 +914,14 @@ function LoadMultipleDatasets(title_idxes, title) {
     passage.forEach((line) => {
       data.push(line);
     });
+    data.push([[],[]]);
     font_size = Math.min(font_size, FONT_SIZES[i]);
   });
   g_aligner.LoadData(data, title, font_size);
 
-  g_aligner.SpawnPuzzleEventLabels(g_puzzle_vis.objects.length);
+  if (obj_idx != -999) {
+    g_aligner.SpawnPuzzleEventLabels(g_puzzle_vis.objects.length);
+  }
 }
 
 function ModifyDataIdx(delta) {
