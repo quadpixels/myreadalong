@@ -139,6 +139,15 @@ class LevelSelect extends MyStuff {
     this.UpdateTitles();
   }
 
+  ClearSelection() {
+    this.btn_puzzles.forEach((b) => {
+      b.checked = false;
+    });
+    this.selected_title_idxes = [];
+    this.num_sentences = 0;
+    this.UpdateTitles();
+  }
+
   Init() {
     this.btn_puzzles = [];
     this.btn_titles = [];
@@ -292,7 +301,7 @@ class LevelSelect extends MyStuff {
           b.checked = false;
         }
       } else {
-        b.text = "---";
+        b.txt = "---";
         b.is_enabled = false;
         b.checked = false;
       }
@@ -496,11 +505,16 @@ class LevelSelect extends MyStuff {
     // 组装数据集
     const d = [];
     const stidxes = this.selected_title_idxes;
+    const title = this.GenTitle();
 
     if (is_puzzle) {
-      LoadMultipleDatasets(stidxes, "【芝麻开门】", this.ChosenPuzzleIdx());
+      HideNavigationButtons();
+      g_btn_puzzle_mode.is_enabled = true;
+      LoadMultipleDatasets(stidxes, title, this.ChosenPuzzleIdx());
     } else {
-      LoadMultipleDatasets(stidxes, "【芝麻开门】", -999);
+      HideNavigationButtons();
+      g_btn_puzzle_mode.is_enabled = false;
+      LoadMultipleDatasets(stidxes, title, -999);
     }
 
     this.FadeOut();
