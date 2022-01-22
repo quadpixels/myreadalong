@@ -1355,7 +1355,7 @@ async function setup() {
   g_downsp_audio_stats_viz.x = 102;
 
   // REC button
-  g_btn_rec = new Button("REC");
+  g_btn_rec = new Button("按住说话");
   g_btn_rec.w = 220;
   g_btn_rec.h = 100;
   g_btn_rec.x = W0/2 - g_btn_rec.w/2;
@@ -1708,11 +1708,13 @@ function draw() {
   g_runningmode_vis.Update(delta_ms);
 
   // crosshair
-  noFill();
-  stroke(32);
-  const l = 10 / g_scale;
-  line(mx - l, my, mx + l, my);
-  line(mx, my - l, mx, my + l);
+  if (false) {
+    noFill();
+    stroke(32);
+    const l = 10 / g_scale;
+    line(mx - l, my, mx + l, my);
+    line(mx, my - l, mx, my + l);
+  }
 
   g_levelselect.Render();
 
