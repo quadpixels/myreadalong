@@ -653,13 +653,14 @@ class RecorderViz extends MyStuff {
 
       let nshown = this.energy_readings.length;
       // 别画太多
-      while (nshown > 250) {
-        nshown /= 2;
-        step *= 2;
+      while (nshown > 480) {
+        nshown /= 1.1;
+        step *= 1.1;
       }
 
       for (let i=0; i<this.energy_readings.length; i += step) {
-        const mag = this.myMap(this.energy_readings[i]*32768);
+        let idx = parseInt(i);
+        const mag = this.myMap(this.energy_readings[idx]*32768);
         const dy0 = ly+16*mag;
         const dy1 = ly-16*mag;
         lx += step;
@@ -1102,11 +1103,11 @@ class Stats4Nerds extends MyStuff {
     g_animator.FinishAllPendingAnimations();
     if (this.y == STATS4NERDS_POS[1]) {
       this.Hide();
-      if (g_recorderviz != undefined)
+      if (typeof(g_recorderviz) != "undefined")
         g_recorderviz.draw_stat = false;
     } else {
       this.Show();
-      if (g_recorderviz != undefined)
+      if (typeof(g_recorderviz) != "undefined")
         g_recorderviz.draw_stat = true;
     }
   }

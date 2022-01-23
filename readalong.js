@@ -817,7 +817,7 @@ class Aligner extends MyStuff {
   Reset() {
     this.line_idx = 0;
     this.prev_line_idx = 0;
-    this.char_idx = 0;
+    this.char_idx = -1;
     this.pinyin_idx = 0;
     this.pan_y = 0;
     this.start_drag_my = 0;
