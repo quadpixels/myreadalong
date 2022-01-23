@@ -98,9 +98,11 @@ function do_ForAllButtons(elt, callback) {
   }
 }
 function ForAllButtons(callback) {
-  g_buttons.forEach((b) => {
-    callback(b);
-  })
+  if (!g_levelselect.visible) {
+    g_buttons.forEach((b) => {
+      callback(b);
+    })
+  }
   do_ForAllButtons(g_stats4nerds, callback);
   if (g_levelselect.visible) {
     do_ForAllButtons(g_levelselect, callback);
@@ -351,15 +353,21 @@ class RecorderViz extends MyStuff {
     this.window_width = 100;
     this.num_windows_in_flight = 0; //有多少个窗口的数据需要识别
 
+    this.recog_response_expected = 0;
     this.recog_status = [];
     this.recog_decode_timestamps = [];
     this.recog_decode_per_bin = [];
     this.serial = 0;
     this.start_serial = 0; // 此次StartRecording时的serial
 
-    this.draw_stat = false;  // 不写状态文字
+    this.draw_stat = true;  // 状态文字
     this.draw_fft = false;   // 不画FFT
     this.draw_energy = true; // 只画能量图
+
+    // ready：缓存已清空，未在录音。接下时变recording。
+    // recording：正在录音。松开时变draining。
+    // draining：缓存还没有清空，不可按键。等清空时变ready。
+    this.state = "ready";
   }
 
   Clear() {
@@ -437,9 +445,7 @@ class RecorderViz extends MyStuff {
     this.duration_ms = millis() - this.start_record_ms;
     frameRate(FRAMERATE_NORMAL);
 
-    if (this.IsAllDone()) {
-      g_aligner.OnStopRecording();
-    }
+    this.SetState("draining");
   }
 
   ShouldAddFFT() {
@@ -542,18 +548,22 @@ class RecorderViz extends MyStuff {
     const w1 = w + this.window_width;
 
     if (this.draw_stat) {
+      noStroke();
+      fill(32);
       txt = txt + " | Window:[" + this.window_offset + "," + 
-            (this.window_offset + this.window_width) + "] |"
-      dx = textWidth(txt) + 3;
-      text(txt, 0, dy);
+            (this.window_offset + this.window_width) + "]"
+      let recoged = 0;
+      this.recog_status.forEach((rs) => {
+        if (rs != undefined) ++recoged;
+      })
+      txt = txt + " | Recog:" + recoged + "/" + this.recog_status.length;
       if (!this.is_recording) {
-        fill(122);
-        text("Not recording", dx, dy);
+        txt += " | 未在录音";
       } else {
-        fill("#F88");
-        this.duration_ms = millis() - this.start_record_ms;
-        text("Recording", dx, dy);
+        txt += " | 录音中"
       }
+      
+      text(txt, 0, dy);
     }
 
     let scale_x = 1;
@@ -686,6 +696,14 @@ class RecorderViz extends MyStuff {
 
     // 在绘图完成时，进行预测
     this.DoPrediction();
+
+    // 完成堆积的工作，将录音按钮设为可用，并且如果现在没有按下，就把Aligner的这个批次终止
+    if (this.state == "draining") {
+      if (this.IsAllDone()) {
+        g_aligner.OnStopRecording();
+        this.SetState("ready");
+      }
+    }
   }
 
   // timestamps为该输入内的 timestamp
@@ -711,15 +729,24 @@ class RecorderViz extends MyStuff {
     });
 
     this.num_windows_in_flight --;
-
-    // 完成了所有堆积的工作，将录音按钮设为可用，并且如果现在没有按下，就把Aligner的这个批次终止
-    if (this.IsAllDone()) {
-      g_btn_rec.is_enabled = true;
-    }
   }
 
   IsAllDone() {
     if (this.num_windows_in_flight <= 0) return true; else return false;
+  }
+
+  SetState(st) {
+    console.log("SetState " + st);
+    if (st == "ready") {
+      g_btn_rec.is_enabled = true;
+      g_btn_rec.txt = "按住说话";
+    } else if (st == "recording") {
+
+    } else if (st == "draining") {
+      g_btn_rec.is_enabled = false;
+      g_btn_rec.txt = "等待\n解码完成";
+    }
+    this.state = st;
   }
 }
 
@@ -1075,8 +1102,12 @@ class Stats4Nerds extends MyStuff {
     g_animator.FinishAllPendingAnimations();
     if (this.y == STATS4NERDS_POS[1]) {
       this.Hide();
+      if (g_recorderviz != undefined)
+        g_recorderviz.draw_stat = false;
     } else {
       this.Show();
+      if (g_recorderviz != undefined)
+        g_recorderviz.draw_stat = true;
     }
   }
 }
@@ -1363,6 +1394,7 @@ async function setup() {
   g_btn_rec.is_enabled = false;
   g_btn_rec.border_style = 1;
   g_btn_rec.clicked = function() {
+    g_recorderviz.SetState("recording");
     g_recorderviz.StartRecording();
   }
   g_btn_rec.released = function() {
