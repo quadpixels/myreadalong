@@ -53,14 +53,19 @@ async function SelectRecordDevice(device_id) {
   await SetUpRecording();
 }
 
+// 在范例中，如果g_recording为false，就在processor中直接退出
 // Create my processor & bind events
 async function CreateMyProcessor(ctx, options) {
   const myProcessor = new AudioWorkletNode(ctx, 'myprocessor', options);
 
   myProcessor.port.onmessage = ((event) => {
     const ms = millis();
-    console.log("Processor message");
     //SoundDataCallbackMyAnalyzer(event.data.buffer, event.data.downsampled, event.data.fft_frames);
+
+    if (event.data.buffer != undefined && event.data.downsampled != undefined) {
+      console.log("buffer.length=" + event.data.buffer.length + ", " +
+                  "downsampled.length=" + event.data.downsampled.length);
+    }
     
     //if (event.data.fft_spectrums) {
     //  event.data.fft_spectrums.forEach((spec) => {
@@ -94,4 +99,22 @@ async function SetUpRecording() {
 
 window.onload = () => {
   InitializeAudioRecorder();
+
+  document.querySelector("#SelectRecordDevice").addEventListener("pointerdown",
+    ()=>{
+      SelectRecordDevice("MkD106aGTjX8Hx5TX6h3hL63tk2Cyc5FKWPXDlFIMEE=") 
+    }
+  );
+
+  document.querySelector("#test2").addEventListener("pointerdown",
+    ()=>{
+      g_processor.port.postMessage({ recording:false });
+    }
+  )
+
+  document.querySelector("#test3").addEventListener("pointerdown",
+    ()=>{
+      g_processor.port.postMessage({ recording:true  });
+    }
+  )
 }

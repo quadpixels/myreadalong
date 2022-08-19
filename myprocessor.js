@@ -232,6 +232,8 @@ class MyProcessor extends AudioWorkletProcessor {
   constructor(options) {
     super();
     this.soundDataCallback = undefined;
+
+    this.recording = true;
     
     // Ring buffer
     const N = 80000;
@@ -269,6 +271,13 @@ class MyProcessor extends AudioWorkletProcessor {
       const y = 0.54 - 0.46 * Math.cos(2*3.1415926*i / (w-1));
       this.hanning_window.push(y);
     }
+
+    this.port.onmessage = (e) => {
+      if (e.data.recording != undefined) {
+        this.recording = e.data.recording
+        console.log("recording=" + this.recording);
+      }
+    };
   }
 
   // Ring buffer stuff
@@ -299,6 +308,10 @@ class MyProcessor extends AudioWorkletProcessor {
   }
 
   process (inputs, outputs, parameters) {
+    if (!this.recording) {
+      return;
+    }
+
     if (this.tot_entries == 0) {
     }  
     

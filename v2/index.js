@@ -9,13 +9,6 @@ function millis() {
   return new Date().getTime() - g_millis0;
 }
 
-function CreateAudioContext() {
-  let ctx = new AudioContext();
-  return ctx;
-}
-
-let g_recording = false;
-
 var Splash = {
   view: function() {
     return m("a", {href:"#!/hello"}, "Enter!")
@@ -28,16 +21,14 @@ function GetAudioContextState(x) {
   return ret;
 }
 
-var audio_ctx = CreateAudioContext();
-
 var Hello = {
   count: 0,
+  frame_count: 0,
   state: "Not clicked",
   ctx: g_canvas.getContext('2d'),
   views: function() {
     return [
       m("div", ""+this.state),
-      m("div", { innerHTML: GetAudioContextState(audio_ctx) } ),
       m("br"),
       m("div", {
         style: {
@@ -71,18 +62,17 @@ var Hello = {
     this.ctx.fillStyle = '#0000FF'
     this.ctx.clearRect(0, 0, w, h);
     this.ctx.font = "regular 12px sans-serif"
-    this.ctx.fillText("count=" + this.count, w/2, h/2);
+    this.ctx.fillText("count=" + this.count, w/2, h/2 - 10);
+    this.ctx.fillText("frame " + this.frame_count, w/2, h/2+10);
 
     return m("main",
       this.views()
     )
   },
   OnMouseDown: function() {
-    g_recording = true;
     this.count++;
   },
   OnMouseUp: function() {
-    g_recording = false;
   }
 }
 
@@ -93,7 +83,8 @@ m.route(root, "/hello", {
 
 let g_prev_timestamp;
 function step(timestamp) {
-  if (g_recording) {
+  if (true) {
+    Hello.frame_count ++;
     m.redraw();
   }
   window.requestAnimationFrame(step);
