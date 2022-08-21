@@ -228,6 +228,9 @@ class MyProcessor extends AudioWorkletProcessor {
 
     this.orig_step_size = 160;
     this.out_step_size = sr/100;
+
+    this.channel_count = 2;
+    this.frame_count = 0;
   }
   constructor(options) {
     super();
@@ -308,6 +311,7 @@ class MyProcessor extends AudioWorkletProcessor {
   }
 
   process (inputs, outputs, parameters) {
+    this.frame_count ++;
     if (!this.recording) {
       return;
     }
@@ -315,8 +319,28 @@ class MyProcessor extends AudioWorkletProcessor {
     if (this.tot_entries == 0) {
     }  
     
-    const input = inputs[0][0]
-    if (input == undefined) return false;
+    //const input = inputs[0][0]
+
+    // 合并到一个声道中
+    let input00 = inputs[0][0];
+    if (input00 == undefined) return false;
+    const N = input00.length;
+    const NC = inputs[0].length;
+    const input = new Float32Array(N);
+
+    for (let i=0; i<N; i++) {
+      let s = 0;
+      for (let j=0; j<NC; j++) {
+        s += inputs[0][j][i];
+      }
+      input[i] = s / NC;
+    }
+
+
+    // Debug用
+    if (this.frame_count == 10) {
+      console.log(input)
+    }
 
     let downsampled = [];  // Downsampled samples for this CB
 
