@@ -1,5 +1,6 @@
 var root = document.body;
 var g_canvas = document.createElement("canvas", "g_canvas");
+var g_myworker_wrapper = new MyWorkerWrapper();
 
 let g_millis0 = 0;
 function millis() {
@@ -26,8 +27,9 @@ var Hello = {
   frame_count: 0,
   state: "Not clicked",
   ctx: g_canvas.getContext('2d'),
+  log_entries: [],
   views: function() {
-    return [
+    ret = [
       m("div", ""+this.state),
       m("br"),
       m("div", {
@@ -55,6 +57,16 @@ var Hello = {
       }, this.count+" clicks"),
 //      m("a", {href:"#!/splash"}, "Return"),
     ];
+
+    const num_shown = 20;
+    for (let i=0; i<num_shown; i++) {
+      let idx = this.log_entries.length - num_shown + i;
+      if (idx >= 0 && idx < this.log_entries.length) {
+        ret.push(m("div", {}, this.log_entries[idx]));
+      }
+    };
+
+    return ret;
   },
   view: function() {
     const w = g_canvas.width, h = g_canvas.height;
@@ -67,9 +79,10 @@ var Hello = {
     this.ctx.fillText("frame " + this.frame_count, 3, 12);
     let c = "g_context is null";
     if (g_context != null) {
-      c = "g_context.state=" + g_context.state
+      c = "g_context.state=" + g_context.state;
     }
-    c = "g_record_buffer_orig.length=" + g_record_buffer_orig.length
+    c = "g_record_buffer_orig.length=" + g_record_buffer_orig.length;
+    c = "g_record_buffer_16khz.length=" + g_record_buffer_16khz.length;
 
     this.ctx.fillText(c, 3, 22);
     let txt = ""
@@ -91,6 +104,9 @@ var Hello = {
   },
   OnMouseUp: function() {
     g_processor.port.postMessage({ recording: false });
+  },
+  AddLogEntry: function(entry) {
+    this.log_entries.push(entry);
   }
 }
 
@@ -110,3 +126,59 @@ function step(timestamp) {
 window.requestAnimationFrame(step);
 
 document.body.appendChild(g_canvas)
+
+// ======================================
+
+window.onload = () => {
+  Hello.AddLogEntry("window.onload");
+  InitializeAudioRecorder();
+
+  document.querySelector("#SelectRecordDevice").addEventListener("pointerdown",
+    ()=>{
+      SelectRecordDevice(document.querySelector("#micSelect").value) 
+    }
+  );
+
+  document.querySelector("#test2").addEventListener("pointerdown",
+    ()=>{
+      g_processor.port.postMessage({ recording:false });
+    }
+  )
+
+  document.querySelector("#test3").addEventListener("pointerdown",
+    ()=>{
+      g_processor.port.postMessage({ recording:true  });
+    }
+  )
+
+  document.querySelector("#test4").addEventListener("pointerdown",
+    ()=>{
+      let audio_url = WriteWAVFileToBlob(g_record_buffer_orig, g_context.sampleRate);
+      let a = document.querySelector("#audio_orig");
+      let d = document.querySelector("#download_orig");
+      a.setAttribute("src", audio_url);
+      d.setAttribute("href", audio_url);
+      d.download = "output_orig.wav";
+
+      audio_url = WriteWAVFileToBlob(g_record_buffer_16khz, 16000);
+      a = document.querySelector("#audio_16khz");
+      d = document.querySelector("#download_16khz");
+      a.setAttribute("src", audio_url);
+      d.setAttribute("href", audio_url);
+      d.download = "output_16khz.wav";
+    }
+  );
+
+  document.querySelector("#ClearButton").addEventListener("pointerdown",
+    ()=>{
+      g_record_buffer_16khz = [];
+      g_record_buffer_orig = [];
+    }
+  );
+
+  document.querySelector("#LoadTfjs").addEventListener("pointerdown",
+    ()=>{
+      g_myworker_wrapper.InitializeMyWorker();
+    }
+  )
+}

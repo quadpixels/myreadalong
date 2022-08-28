@@ -153,10 +153,14 @@
 
 
   <body>
+    <script src="tf.min.js"></script>
     <script src="https://unpkg.com/mithril/mithril.js"></script>
+    <script src="./workerstuff.js"></script>
     <script src="./audiostuff.js"></script>
     <script src="./index.js"></script>
 
+    <br/>
+    <button id="LoadTfjs">Load TFJS Model</button>
     <br/>
     <select name="" id="micSelect"></select>
     <br/>
@@ -165,6 +169,7 @@
     <button id="test3">g_processor.recording=true</button>
     <br/>
     <button id="test4">Save to WAV</button>
+    <button class="button" id="ClearButton">Clear</button>
     <br/>
 
     <span>ORIG:<span><audio id="audio_orig" controls></audio>
@@ -176,7 +181,7 @@
 
     <br/>
 
-    <button class="button" id="TestButton">Touch/hover/focus me!</button>
+    <button class="button" id="TestButton">Push to Rec</button>
     <output id="output"></output>
 
   </body>
