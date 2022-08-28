@@ -6,7 +6,7 @@ var g_audio_input = null;
 let g_processor = null;
 
 let g_record_buffer_orig = [];  // 混缩成一个声道的样本
-let g_record_buffer_8khz = [];  // 混缩并减采的样本
+let g_record_buffer_16khz = [];  // 混缩并减采的样本
 
 function getStream(constraints) {
   if (!constraints) {
@@ -68,7 +68,7 @@ async function CreateMyProcessor(ctx, options) {
 
     if (event.data.buffer != undefined && event.data.downsampled != undefined) {
       g_record_buffer_orig = g_record_buffer_orig.concat(Array.from(event.data.buffer));
-      g_record_buffer_8khz = g_record_buffer_8khz.concat(event.data.downsampled);
+      g_record_buffer_16khz = g_record_buffer_16khz.concat(event.data.downsampled);
     }
     
     //if (event.data.fft_spectrums) {
@@ -168,12 +168,12 @@ window.onload = () => {
       d.setAttribute("href", audio_url);
       d.download = "output_orig.wav";
 
-      audio_url = WriteWAVFileToBlob(g_record_buffer_8khz, 8000);
-      a = document.querySelector("#audio_8khz");
-      d = document.querySelector("#download_8khz");
+      audio_url = WriteWAVFileToBlob(g_record_buffer_16khz, 16000);
+      a = document.querySelector("#audio_16khz");
+      d = document.querySelector("#download_16khz");
       a.setAttribute("src", audio_url);
       d.setAttribute("href", audio_url);
-      d.download = "output_8khz.wav";
+      d.download = "output_16khz.wav";
     }
   )
 }

@@ -224,7 +224,7 @@ class MyProcessor extends AudioWorkletProcessor {
   SetSourceSampleRate(sr) {
     // 坑：在手机上是48KHz，但是PC上是44100Hz
     this.original_sample_rate = sr;
-    this.output_sample_rate   = 8000;  // 8kHz output
+    this.output_sample_rate   = 16000;  // 16kHz output. 
 
     this.orig_step_size = 160;
     this.out_step_size = sr/100;
@@ -312,8 +312,9 @@ class MyProcessor extends AudioWorkletProcessor {
 
   process (inputs, outputs, parameters) {
     this.frame_count ++;
+
     if (!this.recording) {
-      return;
+      return true;
     }
 
     if (this.tot_entries == 0) {

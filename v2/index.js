@@ -62,17 +62,35 @@ var Hello = {
     this.ctx.fillStyle = '#0000FF'
     this.ctx.clearRect(0, 0, w, h);
     this.ctx.font = "regular 12px sans-serif"
-    this.ctx.fillText("count=" + this.count, w/2, h/2 - 10);
-    this.ctx.fillText("frame " + this.frame_count, w/2, h/2+10);
+    this.ctx.textBaseline = "top";
+    this.ctx.fillText("count=" + this.count, 3, 2);
+    this.ctx.fillText("frame " + this.frame_count, 3, 12);
+    let c = "g_context is null";
+    if (g_context != null) {
+      c = "g_context.state=" + g_context.state
+    }
+    c = "g_record_buffer_orig.length=" + g_record_buffer_orig.length
+
+    this.ctx.fillText(c, 3, 22);
+    let txt = ""
+    /*
+    if (g_audio_input == null) {
+      txt = "g_audio_input is null";
+    } else {
+      txt = "g_audio_input.channelCount=" + g_audio_input.channelCount.toString();
+    }
+    this.ctx.fillText(txt, 3, 22);*/
 
     return m("main",
       this.views()
     )
   },
   OnMouseDown: function() {
-    this.count++;
+    this.count++
+    g_processor.port.postMessage({ recording: true });
   },
   OnMouseUp: function() {
+    g_processor.port.postMessage({ recording: false });
   }
 }
 
