@@ -7,6 +7,7 @@ let g_processor = null;
 
 let g_record_buffer_orig = [];  // 混缩成一个声道的样本
 let g_record_buffer_16khz = [];  // 混缩并减采的样本
+let g_fft_buffer = [];
 
 function getStream(constraints) {
   if (!constraints) {
@@ -69,6 +70,12 @@ async function CreateMyProcessor(ctx, options) {
     if (event.data.buffer != undefined && event.data.downsampled != undefined) {
       g_record_buffer_orig = g_record_buffer_orig.concat(Array.from(event.data.buffer));
       g_record_buffer_16khz = g_record_buffer_16khz.concat(event.data.downsampled);
+
+      if (event.data.fft_spectrums) {
+        event.data.fft_spectrums.forEach((spec) => {
+          g_fft_buffer.push(spec.slice(0, 200));
+        })
+      }
     }
     
     //if (event.data.fft_spectrums) {
@@ -96,7 +103,8 @@ async function SetUpRecording() {
   let m = await g_context.audioWorklet.addModule('myprocessor.js');
   g_processor = await CreateMyProcessor(g_context, {
     processorOptions: {
-      sampleRate: sample_rate
+      sampleRate: sample_rate,
+      startRecording: false,
     }
   });
   g_audio_input.connect(g_processor);

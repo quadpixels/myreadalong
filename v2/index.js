@@ -81,10 +81,16 @@ var Hello = {
     if (g_context != null) {
       c = "g_context.state=" + g_context.state;
     }
-    c = "g_record_buffer_orig.length=" + g_record_buffer_orig.length;
-    c = "g_record_buffer_16khz.length=" + g_record_buffer_16khz.length;
 
+    c = "g_record_buffer_orig.length=" + g_record_buffer_orig.length;
     this.ctx.fillText(c, 3, 22);
+
+    c = "g_record_buffer_16khz.length=" + g_record_buffer_16khz.length;
+    this.ctx.fillText(c, 3, 32);
+
+    c = "g_fft_buffer.length=" + g_fft_buffer.length;
+    this.ctx.fillText(c, 3, 42);
+
     let txt = ""
     /*
     if (g_audio_input == null) {
@@ -173,12 +179,26 @@ window.onload = () => {
     ()=>{
       g_record_buffer_16khz = [];
       g_record_buffer_orig = [];
+      g_fft_buffer = [];
     }
   );
 
   document.querySelector("#LoadTfjs").addEventListener("pointerdown",
     ()=>{
       g_myworker_wrapper.InitializeMyWorker();
+    }
+  )
+
+  document.querySelector("#DoPredictButton").addEventListener("pointerdown",
+    ()=>{
+      // 把所有当前存着的FFT都丢进预测器
+      const window_width = 100;
+      const window_delta = 25;
+      for (let i=0; i<g_fft_buffer.length; i+=window_delta) {
+        let ffts = g_fft_buffer.slice(i, i+window_width);
+        let ts = i * (1.0 / 16000);
+        g_myworker_wrapper.Predict(ts, i, ffts);
+      }
     }
   )
 }

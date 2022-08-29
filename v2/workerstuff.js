@@ -1,7 +1,8 @@
 class MyWorkerWrapper {
   constructor() {
-    this.worker = undefined; // 包含了TFJS的Web Worker
+    this.worker = undefined; // 包含了TFJS与CTC解码器的Web Worker
     this.model = undefined;  // 直接在主线程中执行的TFJS Model
+    this.is_tfjs_webworker = true;
   }
 
   LogMessage(msg) {
@@ -9,11 +10,14 @@ class MyWorkerWrapper {
   }
 
   /**
- * 尝试初始化模型，优先顺序如下
+ * 尝试初始化TFJS模型，优先顺序如下
  * 1. WebWorker + WebGL
  * 2. 主线程 + WebGL
- * 4. 主线程 + CPU
- * @param {*} non_worker 是否强制不使用Web Worker
+ * 3. 主线程 + CPU
+ * 
+ * 无论是否在Web Worker中执行TFJS，都是会在Web Worker中执行CTC Decoding步骤的。
+ * 
+ * @param {*} non_worker 是否强制不在Web Worker中使用TFJS。
  */
   InitializeMyWorker(non_worker = false) {
     if (non_worker) {
@@ -30,12 +34,12 @@ class MyWorkerWrapper {
         console.log(be)
         switch(be) {
           case "cpu":
-            this.LogMessage("似乎WebWorker只支持启用CPU后端，所以尝试在主线程中启用WebGL后端");
+            this.LogMessage("似乎WebWorker只支持启用TFJS CPU后端，所以尝试在主线程中启用WebGL后端，Worker只留作解码之用。");
+            this.is_tfjs_webworker = false;
             setTimeout(()=>{
               this.worker.postMessage({
                 "tag": "dispose",
               });
-              this.worker = null;
               this.do_LoadModelNonWorker();
             }, 1000);
             break;
@@ -49,6 +53,12 @@ class MyWorkerWrapper {
             this.LogMessage("WebGL后端着实可用，已启用WebGL后端。")
             break;
         }
+      } else if (event.data.message) {
+        if (event.data.message == "preheat_complete") {
+          this.LogMessage("预热完成");
+        }
+      } else {
+        this.OnPredictionResult(event);
       }
     });
   }
@@ -58,7 +68,7 @@ class MyWorkerWrapper {
     this.model = await tf.loadLayersModel("model/model.json");
     const N = 400;
     let tb = tf.buffer([1, N, 200, 1]);
-    await model.predictOnBatch(tb.toTensor());
+    await this.model.predictOnBatch(tb.toTensor());
 
     const be = tf.getBackend();
     if (be == "webgl") {
@@ -66,13 +76,68 @@ class MyWorkerWrapper {
     }
   }
 
-
-
   /**
-   * @param {*} ffts 100个FFT频谱，所以ffts.size()必须是100
+   * @param {*} ffts FFTs，长度不限，但一般是100个FFT
    * 注意：该函数可能异步完成
    */
-  DoPrediction(ffts) {
+  async Predict(timestamp, serial, ffts) {
+    if (this.is_tfjs_webworker) {
+      this.worker.postMessage({
+        "timestamp": timestamp,
+        "serial": serial,
+        "ffts": ffts,
+        "tag": "Predict",
+      })
+    } else {
+      let temp0 = await this.do_PredictNonWorker(ffts);
 
+      let temp0array = [];
+      const T = temp0.shape[1];
+      const S = temp0.shape[2];
+      let src = temp0.slice([0, 0, 0], [1, T, S]).dataSync();
+      for (let t=0; t<T; t++) {
+        let line = [];
+        let idx0 = S * t;
+        for (let s=0; s<S; s++) {
+          let value = src[s + idx0];
+
+          //if (g_weight_mask != undefined) {
+          //  value = value * g_weight_mask[s];
+          //}
+
+          line.push(value);
+        }
+        temp0array.push(line);
+      }
+
+      this.worker.postMessage({
+        "timestamp": timestamp,
+        "tag": "decode",
+        "S": temp0.shape[2],
+        "temp0array": temp0array,
+        "serial": serial,
+      });
+    }
   }
+
+  async do_PredictNonWorker(ffts) {
+    const N = ffts.length;
+    let tb = tf.buffer([1, N, 200, 1]);
+    for (let i=0; i<N; i++) {
+      for (let j=0; j<200; j++) {
+        tb.set(ScaleFFTDataPoint(ffts[i][j]), 0, i, j, 0);  // Floating point to int16
+      }
+    }
+    return await this.model.predictOnBatch(tb.toTensor());
+  }
+
+  OnPredictionResult(res) {
+    this.LogMessage(res.data.Decoded + ", " + res.data.DecodeTime);
+  }
+}
+
+function ScaleFFTDataPoint(x) {
+  let ret = Math.     log(x + 1);
+  if (ret < 0) ret = 0;
+  return ret;
 }

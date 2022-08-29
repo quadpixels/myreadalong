@@ -256,6 +256,12 @@ class MyProcessor extends AudioWorkletProcessor {
     if (options.processorOptions.sampleRate != undefined) {
       sampleRate = options.processorOptions.sampleRate;
     }
+
+    // 一开始要不要录音
+    if (options.processorOptions.startRecording != undefined) {
+      this.recording = options.processorOptions.startRecording;
+    }
+
     console.log("[MyProcessor]  sample rate: " + sampleRate);
     this.SetSourceSampleRate(sampleRate);
 
