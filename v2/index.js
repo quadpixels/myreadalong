@@ -28,6 +28,7 @@ var Hello = {
   state: "Not clicked",
   ctx: g_canvas.getContext('2d'),
   log_entries: [],
+  num_in_flight: 0,
   views: function() {
     ret = [
       m("div", ""+this.state),
@@ -56,6 +57,18 @@ var Hello = {
         }
       }, this.count+" clicks"),
 //      m("a", {href:"#!/splash"}, "Return"),
+      m("div", "frame " + this.frame_count),
+      m("div", "g_record_buffer_orig.length=" + g_record_buffer_orig.length),
+      m("div", "g_record_buffer_16khz.length=" + g_record_buffer_16khz.length),
+      m("div", "g_fft_buffer.length=" + g_fft_buffer.length),
+      m("div", this.num_in_flight + " in-flight reqs"),
+      m("input", {
+        type: "submit",
+        value: this.num_in_flight > 0 ? "等待识别("+ this.num_in_flight + ")" : "按键录音",
+        "onpointerdown": ()=>{ Hello.OnMouseDown(); },
+        "onpointerup": ()=>{ Hello.OnMouseUp(); },
+        disabled: this.num_in_flight > 0,
+      })
     ];
 
     const num_shown = 20;
@@ -91,6 +104,16 @@ var Hello = {
     c = "g_fft_buffer.length=" + g_fft_buffer.length;
     this.ctx.fillText(c, 3, 42);
 
+    c = this.num_in_flight + " in-flight reqs";
+    this.ctx.fillText(c, 3, 52);
+
+    this.ctx.strokeStyle = '#0000FF';
+
+    this.ctx.beginPath();
+    this.ctx.moveTo(0, 0);
+    this.ctx.lineTo(w, h);
+    this.ctx.stroke();
+
     let txt = ""
     /*
     if (g_audio_input == null) {
@@ -119,6 +142,7 @@ var Hello = {
 m.route(root, "/hello", {
   "/splash": Splash,
   "/hello": Hello,
+  "/": Hello,
 })
 
 let g_prev_timestamp;

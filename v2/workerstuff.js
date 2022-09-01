@@ -9,6 +9,14 @@ class MyWorkerWrapper {
     Hello.AddLogEntry(msg);
   }
 
+  IncrementInFlightCount() {
+    Hello.num_in_flight ++;
+  }
+
+  DecrementInFlightCount() {
+    Hello.num_in_flight --;
+  }
+
   /**
  * 尝试初始化TFJS模型，优先顺序如下
  * 1. WebWorker + WebGL
@@ -81,6 +89,7 @@ class MyWorkerWrapper {
    * 注意：该函数可能异步完成
    */
   async Predict(timestamp, serial, ffts) {
+    this.IncrementInFlightCount();
     if (this.is_tfjs_webworker) {
       this.worker.postMessage({
         "timestamp": timestamp,
@@ -132,6 +141,7 @@ class MyWorkerWrapper {
   }
 
   OnPredictionResult(res) {
+    this.DecrementInFlightCount();
     this.LogMessage(res.data.Decoded + ", " + res.data.DecodeTime);
   }
 }
