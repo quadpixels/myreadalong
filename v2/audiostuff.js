@@ -47,6 +47,7 @@ async function InitializeAudioRecorder() {
 
 // 选定录音设备
 async function SelectRecordDevice(device_id) {
+  console.log("SelectRecordDevice " + device_id)
   g_stream = await getStream({
     audio: {
       deviceId: {
@@ -144,4 +145,12 @@ function WriteWAVFileToBlob(buf, sample_rate) {
   const blob = new Blob([view], {type:'audio/wav'});
   const audio_url = URL.createObjectURL(blob);
   return audio_url;
+}
+
+let g_millis0 = 0;
+function millis() {
+  if (g_millis0 == 0) {
+    g_millis0 = new Date().getTime();
+  }
+  return new Date().getTime() - g_millis0;
 }

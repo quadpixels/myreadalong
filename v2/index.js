@@ -2,13 +2,8 @@ var root = document.body;
 var g_canvas = document.createElement("canvas", "g_canvas");
 var g_myworker_wrapper = new MyWorkerWrapper();
 
-let g_millis0 = 0;
-function millis() {
-  if (g_millis0 == 0) {
-    g_millis0 = new Date().getTime();
-  }
-  return new Date().getTime() - g_millis0;
-}
+var g_aligner = new Aligner();
+g_aligner.LoadSampleData();
 
 var Splash = {
   view: function() {
@@ -56,7 +51,6 @@ var Hello = {
           this.OnMouseUp(); 
         }
       }, this.count+" clicks"),
-//      m("a", {href:"#!/splash"}, "Return"),
       m("div", "frame " + this.frame_count),
       m("div", "g_record_buffer_orig.length=" + g_record_buffer_orig.length),
       m("div", "g_record_buffer_16khz.length=" + g_record_buffer_16khz.length),
@@ -139,11 +133,21 @@ var Hello = {
   }
 }
 
+/*
 m.route(root, "/hello", {
   "/splash": Splash,
   "/hello": Hello,
   "/": Hello,
-})
+})*/
+
+m.mount(document.body,
+  {
+    view:() => [
+      //m(Hello),
+      m(g_aligner),
+    ]
+  }
+)
 
 let g_prev_timestamp;
 function step(timestamp) {
@@ -159,9 +163,11 @@ document.body.appendChild(g_canvas)
 
 // ======================================
 
-window.onload = () => {
+window.onload = async () => {
   Hello.AddLogEntry("window.onload");
-  InitializeAudioRecorder();
+  await InitializeAudioRecorder();
+  g_myworker_wrapper.InitializeMyWorker();
+  SelectRecordDevice(document.querySelector("#micSelect").value) 
 
   document.querySelector("#SelectRecordDevice").addEventListener("pointerdown",
     ()=>{
