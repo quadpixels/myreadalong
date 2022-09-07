@@ -1,4 +1,4 @@
-模仿 [Haskely的WebASR](https://github.com/Haskely/WebASR) 的一个练习用小玩意。
+模仿 [Haskely的WebASR](https://github.com/Haskely/WebASR) 的一个练习用小玩意兼游园小游戏。
 
 ![Screenshot](scrnshot.jpg)
 
@@ -10,6 +10,7 @@
   * tensorflowjs 3.9.0
   * p5.js （用于绘图）
   * 测试用的是Firefox
+* 可用于移动设备与桌面浏览器
 * 所用数据集：
   * [thchs-30](http://openslr.org/18/)
 * 训练速度大致参考：
@@ -19,7 +20,8 @@
 
 * 运行方式
   * `node app.js`
-  * 然后在浏览器中打开`localhost:3000`
+  * 然后在浏览器中打开`https://localhost:3000`
+  * 或者访问布署页面：[https://quadpixels.github.io/readalong/]
 * 训练方式
   * 首先安装依赖项
   * 然后`LD_LIBRARY_PATH=/usr/local/cuda-11.2/lib64 python3 thchs_py3.py train`；一次是一个 epoch
@@ -29,7 +31,7 @@
 
 一些参数
 * 用于FFT的信号频率为16000Hz
-* 窗口长度：100个FFT
-× 窗口位移：25个FFT
+  * 窗口长度：100个FFT
+  * 窗口位移：25个FFT
 
 还要修复许多bug和优化很多地方 :-S

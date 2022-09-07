@@ -1,10 +1,20 @@
+function CompareLineAndCharIdxes(line_idx0, char_idx0, line_idx1, char_idx1) {
+  if (line_idx0 < line_idx1) return -1;
+  else if (line_idx0 > line_idx1) return 1;
+  else {
+    if (char_idx0 < char_idx1) return -1;
+    else if (char_idx0 == char_idx1) return 0;
+    else return 1;
+  }
+}
+
 class Aligner {
   static PUNCT = new Set(['，', '。', '；']);
   constructor() {
     this.lang_idx = 0; // 0:简体 1:繁体
     this.LoadSampleData();
 
-    this.is_debug = true;
+    this.is_debug = false;
     this.Reset();
 
     this.saved_pinyin_idx = undefined;
@@ -71,6 +81,8 @@ class Aligner {
         };
         if (i == this.line_idx && j == this.char_idx) {
           st.class = "aligner_curr";
+        } else if (CompareLineAndCharIdxes(this.line_idx, this.char_idx, i, j) > 0) {
+          st.class = "aligner_done";
         }
         line.push(m('span', st, chars[j]));
       }
@@ -80,18 +92,26 @@ class Aligner {
     if (this.is_debug) {
       c.push(m('div', 
         {"style":"color:grey"},
-        'L=' + this.line_idx + ", C=" + this.char_idx + ", P=" + this.pinyin_idx + 
-        '\nProbe: L=' + this.probe_lidx + ", C=" + this.probe_cidx + ", P=" + this.probe_pidx))
+        'L=' + this.line_idx + ", C=" + this.char_idx + ", P=" + this.pinyin_idx));
+      c.push(m('div', 
+        {"style":"color:grey"},
+        'Probe: L=' + this.probe_lidx + ", C=" + this.probe_cidx + ", P=" + this.probe_pidx));
     }
 
-    return m('div', "(Aligner status)", c);
+    return m('div', c);
   }
 
   LoadSampleData() {
     console.log("LoadSampleData")
     this.LoadData([
       ["海上生明月", "海上生明月", "hai shang sheng ming yue"],
-      ["天涯共此时", "天涯共此時", "tian ya gong ci shi"]
+      ["天涯共此时", "天涯共此時", "tian ya gong ci shi"],
+      ["情人怨遥夜", "情人怨遙夜", "qing ren yuan yao ye"],
+      ["竟夕起相思", "竟夕起相思", "jing xi qi xiang si"],
+      ["灭烛怜光满", "滅燭憐光滿", "mie zhu lian guang man"],
+      ["披衣觉露滋", "披衣覺露滋", "pi yi jue lu zi"],
+      ["不堪盈手赠", "不堪盈手贈", "bu kan ying shou zeng"],
+      ["还寝梦佳期", "還寢夢佳期", "huan qing meng jia qi"],
     ],
     "望月怀远"
     );

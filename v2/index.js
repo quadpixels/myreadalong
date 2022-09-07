@@ -19,129 +19,107 @@ function GetAudioContextState(x) {
 
 var Hello = {
   count: 0,
+  debug: false,
   frame_count: 0,
   state: "Not clicked",
-  ctx: g_canvas.getContext('2d'),
   log_entries: [],
   num_in_flight: 0,
   views: function() {
     ret = [
-      m("div", ""+this.state),
-      m("br"),
-      m("div", {
-        style: {
-          width: '100%',
-          height: '32px',
-          border: '1px blue solid',
-        },
-        onmousedown: () => {
-          //this.state = "mousedown";
-          //this.OnMouseDown(); 
-        },
-        onmouseup: () => { 
-          //this.state = "mouseup"
-          //this.OnMouseUp(); 
-        },
-        ontouchdown: () => {
-          this.state = "touchdown";
-          this.OnMouseDown(); 
-        },
-        ontouchup: () => { 
-          this.state = "touchup";
-          this.OnMouseUp(); 
-        }
-      }, this.count+" clicks"),
-      m("div", "frame " + this.frame_count),
-      m("div", "g_record_buffer_orig.length=" + g_record_buffer_orig.length),
-      m("div", "g_record_buffer_16khz.length=" + g_record_buffer_16khz.length),
-      m("div", "g_fft_buffer.length=" + g_fft_buffer.length),
-      m("div", this.num_in_flight + " in-flight reqs"),
       m("input", {
+        class: "button1",
         type: "submit",
         value: this.num_in_flight > 0 ? "等待识别("+ this.num_in_flight + ")" : "按键录音",
         "onpointerdown": ()=>{ Hello.OnMouseDown(); },
         "onpointerup": ()=>{ Hello.OnMouseUp(); },
         disabled: this.num_in_flight > 0,
+      }),
+      m("input", {
+        class: "button1",
+        type: "submit",
+        value: this.debug ? "关闭debug" : "开启debug",
+        "onpointerdown": ()=>{ this.debug = !this.debug; Hello.SetDebug(this.debug); }
       })
     ];
 
-    const num_shown = 20;
-    for (let i=0; i<num_shown; i++) {
-      let idx = this.log_entries.length - num_shown + i;
-      if (idx >= 0 && idx < this.log_entries.length) {
-        ret.push(m("div", {}, this.log_entries[idx]));
-      }
-    };
+    if (this.debug) {
+      ret.push(m("div", ""+this.state));
+      ret.push(m("div", "frame " + this.frame_count));
+      ret.push(m("div", "g_record_buffer_orig.length=" + g_record_buffer_orig.length));
+      ret.push(m("div", "g_record_buffer_16khz.length=" + g_record_buffer_16khz.length));
+      ret.push(m("div", "g_fft_buffer.length=" + g_fft_buffer.length));
+      ret.push(m("div", this.num_in_flight + " in-flight reqs"));
+
+      const num_shown = 20;
+      for (let i=0; i<num_shown; i++) {
+        let idx = this.log_entries.length - num_shown + i;
+        if (idx >= 0 && idx < this.log_entries.length) {
+          ret.push(m("div", {}, this.log_entries[idx]));
+        }
+      };
+    }
 
     return ret;
   },
   view: function() {
-    const w = g_canvas.width, h = g_canvas.height;
-    this.ctx = g_canvas.getContext('2d')
-    this.ctx.fillStyle = '#0000FF'
-    this.ctx.clearRect(0, 0, w, h);
-    this.ctx.font = "regular 12px sans-serif"
-    this.ctx.textBaseline = "top";
-    this.ctx.fillText("count=" + this.count, 3, 2);
-    this.ctx.fillText("frame " + this.frame_count, 3, 12);
-    let c = "g_context is null";
-    if (g_context != null) {
-      c = "g_context.state=" + g_context.state;
-    }
-
-    c = "g_record_buffer_orig.length=" + g_record_buffer_orig.length;
-    this.ctx.fillText(c, 3, 22);
-
-    c = "g_record_buffer_16khz.length=" + g_record_buffer_16khz.length;
-    this.ctx.fillText(c, 3, 32);
-
-    c = "g_fft_buffer.length=" + g_fft_buffer.length;
-    this.ctx.fillText(c, 3, 42);
-
-    c = this.num_in_flight + " in-flight reqs";
-    this.ctx.fillText(c, 3, 52);
-
-    this.ctx.strokeStyle = '#0000FF';
-
-    this.ctx.beginPath();
-    this.ctx.moveTo(0, 0);
-    this.ctx.lineTo(w, h);
-    this.ctx.stroke();
-
-    let txt = ""
-    /*
-    if (g_audio_input == null) {
-      txt = "g_audio_input is null";
-    } else {
-      txt = "g_audio_input.channelCount=" + g_audio_input.channelCount.toString();
-    }
-    this.ctx.fillText(txt, 3, 22);*/
-
     return m("main",
       this.views()
     )
   },
   OnMouseDown: function() {
     this.count++
+    ClearRecordBuffer();
     g_aligner.OnStartRecording();
     g_processor.port.postMessage({ recording: true });
   },
   OnMouseUp: function() {
+    PredictCurrentBuffer();
     g_processor.port.postMessage({ recording: false });
   },
   AddLogEntry: function(entry) {
     this.log_entries.push(entry);
+  },
+  SetDebug: function(x) {
+    this.debug = x;
+    let d = document.querySelector("#debug_panel");
+    if (x) {
+      d.style.display = "block";
+    } else {
+      d.style.display = "none";
+    }
   }
 }
 
 m.mount(document.body,
   {
     view:() => [
-      m(Hello),
       m(g_aligner),
+      m(Hello),
     ]
   }
 )
+
+function ClearRecordBuffer() {
+  g_record_buffer_16khz = [];
+  g_record_buffer_orig = [];
+  g_fft_buffer = [];
+  g_aligner.Clear();
+}
+
+function PredictCurrentBuffer() {
+  // 把所有当前存着的FFT都丢进预测器
+  const window_width = 100;
+  const window_delta = 25;
+  for (let i=0; i<g_fft_buffer.length; i+=window_delta) {
+    let ffts = g_fft_buffer.slice(i, i+window_width);
+    let gap = window_width - ffts.length;
+    if (gap < 50) {
+      ffts = PadZero(ffts, window_width);
+      let ts = i * (1.0 / 16000);
+      g_myworker_wrapper.Predict(ts, i, ffts);
+    }
+  }
+}
 
 let g_prev_timestamp;
 function step(timestamp) {
@@ -205,6 +183,9 @@ window.onload = async () => {
       g_record_buffer_orig = [];
       g_fft_buffer = [];
       g_aligner.Clear();
+
+      if (Hello != undefined)
+        Hello.log_entries = [];
     }
   );
 
@@ -216,17 +197,11 @@ window.onload = async () => {
 
   document.querySelector("#DoPredictButton").addEventListener("pointerdown",
     ()=>{
-      // 把所有当前存着的FFT都丢进预测器
-      const window_width = 100;
-      const window_delta = 25;
-      for (let i=0; i<g_fft_buffer.length; i+=window_delta) {
-        let ffts = g_fft_buffer.slice(i, i+window_width);
-        ffts = PadZero(ffts, window_width);
-        let ts = i * (1.0 / 16000);
-        g_myworker_wrapper.Predict(ts, i, ffts);
-      }
+      PredictCurrentBuffer();
     }
   )
+
+  Hello.SetDebug(false);
 }
 
 function PadZero(ffts, len) {

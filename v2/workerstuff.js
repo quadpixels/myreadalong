@@ -15,6 +15,9 @@ class MyWorkerWrapper {
 
   DecrementInFlightCount() {
     Hello.num_in_flight --;
+    if (Hello.num_in_flight < 1) {
+      g_aligner.OnStopRecording();
+    }
   }
 
   /**
