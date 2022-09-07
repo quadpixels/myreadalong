@@ -7,3 +7,14 @@ html { touch-action: none; }
   -moz-user-select:none;
   -ms-user-select:none;
 }
+
+.aligner_cell {
+  border: 1px #CCC dashed;
+  padding: 2px;
+}
+
+.aligner_curr {
+  border: 1px #CCC dashed;
+  background-color: bisque;
+  padding: 2px;
+}

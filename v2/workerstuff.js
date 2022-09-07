@@ -143,6 +143,7 @@ class MyWorkerWrapper {
   OnPredictionResult(res) {
     this.DecrementInFlightCount();
     this.LogMessage(res.data.Decoded + ", " + res.data.DecodeTime);
+    g_aligner.OnPredictionResult(res.data);
   }
 }
 

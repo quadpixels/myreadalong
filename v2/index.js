@@ -123,6 +123,7 @@ var Hello = {
   },
   OnMouseDown: function() {
     this.count++
+    g_aligner.OnStartRecording();
     g_processor.port.postMessage({ recording: true });
   },
   OnMouseUp: function() {
@@ -133,17 +134,10 @@ var Hello = {
   }
 }
 
-/*
-m.route(root, "/hello", {
-  "/splash": Splash,
-  "/hello": Hello,
-  "/": Hello,
-})*/
-
 m.mount(document.body,
   {
     view:() => [
-      //m(Hello),
+      m(Hello),
       m(g_aligner),
     ]
   }
@@ -210,6 +204,7 @@ window.onload = async () => {
       g_record_buffer_16khz = [];
       g_record_buffer_orig = [];
       g_fft_buffer = [];
+      g_aligner.Clear();
     }
   );
 
@@ -226,9 +221,27 @@ window.onload = async () => {
       const window_delta = 25;
       for (let i=0; i<g_fft_buffer.length; i+=window_delta) {
         let ffts = g_fft_buffer.slice(i, i+window_width);
+        ffts = PadZero(ffts, window_width);
         let ts = i * (1.0 / 16000);
         g_myworker_wrapper.Predict(ts, i, ffts);
       }
     }
   )
 }
+
+function PadZero(ffts, len) {
+  while (ffts.length < len) {
+    let zeroes = [];
+    for (let i=0; i<200; i++) { zeroes.push(0); }
+    ffts.push(zeroes);
+  }
+  return ffts;
+}
+
+window.addEventListener('keydown', function(event) {
+  if (event.keyCode == 37) {  // left arrow
+    g_aligner.do_PrevStep();
+  } else if (event.keyCode == 39) { // Right arrow
+    g_aligner.do_NextStep();
+  }
+})
