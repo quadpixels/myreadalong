@@ -9,6 +9,7 @@
 #include <math.h>
 
 #include <H5Cpp.h>
+#include <sndfile.h>
 
 struct MyTensor {
     std::vector<float> v;
@@ -168,9 +169,7 @@ MyTensor ReadMyTensorFromH5(const H5::H5File* file, const char* path, int force_
     return MyTensor(data, d);
 }
 
-int main() {
-    // Step 1: Initialize the HDF5 library (optional)
-    H5open();
+void MiniTest() {
     try {
         // Step 2: Open the HDF5 file
         H5::H5File file("weights.h5", H5F_ACC_RDONLY);
@@ -213,9 +212,49 @@ int main() {
     } catch (H5::Exception &error) {
         std::cerr << "General error: " << error.getCDetailMsg() << std::endl;
     }
+}
 
-    // Step 7: Close the HDF5 library (optional)
+void SndfileTest() {
+  const char *fn;
+  SNDFILE *inFile;
+  SF_INFO sfinfo;
+
+  fn = "laihongduiquyan.wav";
+
+  inFile = sf_open(fn, SFM_READ, &sfinfo);
+
+  printf("Sample Rate=%d Hz\n", sfinfo.samplerate);
+  printf("Channels=%d\n", sfinfo.channels);
+  printf("Format=%d ", sfinfo.format);
+  if ((sfinfo.format & SF_FORMAT_WAV) == SF_FORMAT_WAV) {
+    printf("(WAV) ");
+  }
+  if ((sfinfo.format & SF_FORMAT_PCM_16) == SF_FORMAT_PCM_16) {
+    printf("(signed 16bit) ");
+  }
+  printf("\n");
+  printf("Frames=%ld\n", sfinfo.frames);
+  assert(sfinfo.channels == 1);
+
+  std::vector<short> samples(sfinfo.frames);
+  sf_readf_short(inFile, samples.data(), sfinfo.frames);
+  printf("[");
+  for (int i=0; i<3; i++) {
+    printf("%hd ", samples[i]);
+  }
+  printf(" ...");
+  for (int i=sfinfo.frames-3; i<sfinfo.frames; i++) {
+    printf(" %hd", samples[i]);
+  }
+  printf("]\n");
+
+  sf_close(inFile);
+}
+
+int main() {
+    H5open();
+    MiniTest();
+    SndfileTest();
     H5close();
-
     return 0;
 }
