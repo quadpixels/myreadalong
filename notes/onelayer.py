@@ -1,6 +1,7 @@
 import numpy as np
-from tensorflow.keras.layers import Input, Dense, Conv2D, Layer, BatchNormalization
+from tensorflow.keras.layers import Input, Dense, Conv2D, Layer, BatchNormalization, Reshape
 from tensorflow.keras.models import Model, Sequential
+from tensorflow.keras.initializers import GlorotNormal
 
 # Example on https://medium.com/latinxinai/convolutional-neural-network-from-scratch-6b1c856e1c07
 
@@ -8,8 +9,9 @@ from tensorflow.keras.models import Model, Sequential
 my_model = Sequential([
     Input(name="the_inputs", shape=(5, 5, 1)),
     Conv2D(name="conv2d_1", filters=1, kernel_size=(3,3), activation="linear", padding="same"),
-    BatchNormalization(name="batchnorm_1", axis=-1, scale=False, center=False)
-
+    BatchNormalization(name="batchnorm_1", axis=-1, scale=False, center=False),
+    Reshape((-1, 25)),
+    Dense(name="dense_1", units=5, activation="linear", use_bias=True, kernel_initializer=GlorotNormal(seed=42), bias_initializer=GlorotNormal(seed=42))
 ])
 my_model.summary()
 # 1.1. Manually assign weight
@@ -26,6 +28,7 @@ my_model.get_layer("conv2d_1").set_weights([my_w, np.array([0])])
 intermediate_model = Model(inputs=my_model.input, outputs=my_model.get_layer("conv2d_1").output)
 
 bn1=my_model.get_layer("batchnorm_1")
+dense1=my_model.get_layer("dense_1");
 
 # 2. Feed example input data
 in0 = np.array([
@@ -42,7 +45,6 @@ out0 = out0.reshape((5,5))
 print(out0)
 
 out1 = my_model.predict(in0)
-out1 = out1.reshape((5,5))
 print(out1)
 
 # 3. Save model to HDF5
