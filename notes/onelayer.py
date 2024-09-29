@@ -7,7 +7,7 @@ from tensorflow.keras.models import Model, Sequential
 # 1. Define model
 my_model = Sequential([
     Input(name="the_inputs", shape=(5, 5, 1)),
-    Conv2D(name="conv2d_1", filters=1, kernel_size=(3,3), activation="linear")
+    Conv2D(name="conv2d_1", filters=1, kernel_size=(3,3), activation="linear", padding="same")
 ])
 my_model.summary()
 # 1.1. Manually assign weight
@@ -31,7 +31,8 @@ in0 = np.array([
 
 in0 = in0.reshape((1,5,5,1))  # Add batch dimension and channel dimension
 out0 = my_model.predict(in0)
-out0 = out0.reshape((3,3))
+out0 = out0.reshape((5,5))
+print(out0)
 
 # 3. Save model to HDF5
 my_model.save_weights("weights.h5", overwrite=True)
