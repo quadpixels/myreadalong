@@ -5,6 +5,8 @@
 #include <numeric>
 #include <vector>
 
+#include <math.h>
+
 #include <H5Cpp.h>
 
 struct MyTensor {
@@ -70,6 +72,19 @@ struct MyConv2D {
     }
 };
 
+struct MyBatchNormalization {
+    float epsilon = 0.001f;
+    float moving_variance = 1;
+    float moving_mean = 0;
+    MyTensor operator()(MyTensor& in) {
+        MyTensor ret = in;
+        for (size_t i=0; i<in.v.size(); i++) {
+            ret.v[i] = (in.v[i] - moving_mean) / sqrtf(moving_variance + epsilon);
+        }
+        return ret;
+    }
+};
+
 // Build:
 // CFlags are obtained by `pkg-config --cflags hdf5-serial`
 // LD Flags are inspired by `pkg-config --libs hdf5-serial`. One needs to add -lhdf5_cpp
@@ -118,6 +133,10 @@ int main() {
                       2,8,7,2,7,
                       5,4,4,5,4}, {5,5});
         MyTensor t = myconv2d(in0);
+        t.Print();
+
+        MyBatchNormalization mybn;
+        t = mybn(t);
         t.Print();
 
         // Step 6: Close the dataset and file
