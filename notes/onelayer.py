@@ -48,4 +48,4 @@ out1 = my_model.predict(in0)
 print(out1)
 
 # 3. Save model to HDF5
-my_model.save_weights("weights.h5", overwrite=True)
+my_model.save_weights("onelayer.h5", overwrite=True)

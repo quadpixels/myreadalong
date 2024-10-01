@@ -1,2 +1,5 @@
 weights.h5
+onelayer.h5
+*.pyc
 main
+a.out
